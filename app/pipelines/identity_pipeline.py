@@ -89,17 +89,25 @@ class IdentityPipeline(BasePipeline):
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
-        vision_result = await self.vision_service.analyze_document(
-            image_bytes,
-            document_type,
-            media_type,
-        )
-        logger.debug(
-            "Vision done | request_id=%s authentic=%s score=%.2f",
-            request_id,
-            vision_result.is_authentic,
-            vision_result.authenticity_score,
-        )
+        if document_type == "INE_REVERSO":
+            vision_result = self._build_neutral_vision_result()
+            logger.info(
+                "Skipping vision stage for request_id=%s document_type=%s",
+                request_id,
+                document_type,
+            )
+        else:
+            vision_result = await self.vision_service.analyze_document(
+                image_bytes,
+                document_type,
+                media_type,
+            )
+            logger.debug(
+                "Vision done | request_id=%s authentic=%s score=%.2f",
+                request_id,
+                vision_result.is_authentic,
+                vision_result.authenticity_score,
+            )
 
         # Step 3 — Rules engine
         rules_result = rules_engine.validate_identity(ocr_result, document_type)
@@ -191,6 +199,19 @@ class IdentityPipeline(BasePipeline):
         if parsed is None:
             return False
         return parsed <= datetime.now()
+
+    @staticmethod
+    def _build_neutral_vision_result() -> VisionResult:
+        return VisionResult(
+            is_authentic=True,
+            fraud_indicators=[],
+            authenticity_score=1.0,
+            document_matches_expected_type=True,
+            visual_validation_score=1.0,
+            quality_flags=[],
+            consistency_flags=[],
+            notes="Vision skipped for INE reverso OCR-only flow.",
+        )
 
     @staticmethod
     def _normalize_ine_reverso_id(
