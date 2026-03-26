@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from app.core.errors import UpstreamServiceError
 from app.models.responses import IdentityExtractedData, IdentityValidationResponse, VisionResult
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
@@ -97,17 +98,25 @@ class IdentityPipeline(BasePipeline):
                 document_type,
             )
         else:
-            vision_result = await self.vision_service.analyze_document(
-                image_bytes,
-                document_type,
-                media_type,
-            )
-            logger.debug(
-                "Vision done | request_id=%s authentic=%s score=%.2f",
-                request_id,
-                vision_result.is_authentic,
-                vision_result.authenticity_score,
-            )
+            try:
+                vision_result = await self.vision_service.analyze_document(
+                    image_bytes,
+                    document_type,
+                    media_type,
+                )
+                logger.debug(
+                    "Vision done | request_id=%s authentic=%s score=%.2f",
+                    request_id,
+                    vision_result.is_authentic,
+                    vision_result.authenticity_score,
+                )
+            except UpstreamServiceError:
+                vision_result = self._build_degraded_vision_result(document_type)
+                logger.warning(
+                    "Vision stage degraded for request_id=%s document_type=%s; continuing with OCR-only result",
+                    request_id,
+                    document_type,
+                )
 
         # Step 3 — Rules engine
         rules_result = rules_engine.validate_identity(ocr_result, document_type)
@@ -211,6 +220,19 @@ class IdentityPipeline(BasePipeline):
             quality_flags=[],
             consistency_flags=[],
             notes="Vision skipped for INE reverso OCR-only flow.",
+        )
+
+    @staticmethod
+    def _build_degraded_vision_result(document_type: str) -> VisionResult:
+        return VisionResult(
+            is_authentic=True,
+            fraud_indicators=["vision_unavailable"],
+            authenticity_score=0.5,
+            document_matches_expected_type=True,
+            visual_validation_score=0.5,
+            quality_flags=["vision_unavailable"],
+            consistency_flags=[],
+            notes=f"Vision stage unavailable for {document_type}; continuing with OCR-only result.",
         )
 
     @staticmethod
