@@ -21,8 +21,8 @@ _EXPECTED_ASPECT_RATIO = 1.586
 _MAX_ASPECT_RATIO_DELTA = 0.4
 
 # Relative crop calibrated for the lower-right identifier region on INE reverso.
-_INE_REVERSO_ID_CROP = (0.42, 0.60, 0.48, 0.22)
-_INE_REVERSO_FALLBACK_CROP = (0.35, 0.52, 0.58, 0.28)
+_INE_REVERSO_ID_CROP = (0.25, 0.60, 0.65, 0.22)
+_INE_REVERSO_FALLBACK_CROP = (0.10, 0.50, 0.80, 0.32)
 
 
 @dataclass(slots=True)
