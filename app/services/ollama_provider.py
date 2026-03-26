@@ -10,6 +10,7 @@ from app.models.responses import OCRResult, VisionResult
 from app.services.provider_common import parse_json_response
 
 logger = logging.getLogger(__name__)
+_MAX_DEBUG_PAYLOAD_CHARS = 1200
 
 _EXTRACT_PROMPT = """Analyze this document image and extract all visible text.
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
@@ -174,6 +175,11 @@ async def _request_ollama_json(
             body = response.json()
             content = body.get("response")
             if not isinstance(content, str) or not content.strip():
+                logger.warning(
+                    "Ollama %s returned unexpected payload: %s",
+                    operation_name,
+                    _truncate_for_log(body),
+                )
                 raise ProviderResponseError(
                     f"{operation_name} provider returned an unexpected response."
                 )
@@ -183,11 +189,19 @@ async def _request_ollama_json(
         except Exception as exc:  # pragma: no cover
             last_error = exc
             logger.warning(
-                "Ollama %s request failed on attempt %d: %s",
+                "Ollama %s request failed on attempt %d [%s]: %s",
                 operation_name,
                 attempt + 1,
+                type(exc).__name__,
                 exc,
             )
             if attempt < max_retries:
                 await asyncio.sleep(0.25 * (attempt + 1))
     raise UpstreamServiceError(f"{operation_name} provider is unavailable.") from last_error
+
+
+def _truncate_for_log(payload: object) -> str:
+    text = repr(payload)
+    if len(text) <= _MAX_DEBUG_PAYLOAD_CHARS:
+        return text
+    return f"{text[:_MAX_DEBUG_PAYLOAD_CHARS]}...<truncated>"
