@@ -23,6 +23,7 @@ _MAX_ASPECT_RATIO_DELTA = 0.4
 # Relative crop calibrated for the lower-right identifier region on INE reverso.
 _INE_REVERSO_ID_CROP = (0.25, 0.60, 0.65, 0.22)
 _INE_REVERSO_FALLBACK_CROP = (0.10, 0.50, 0.80, 0.32)
+_INE_FRONT_FALLBACK_CROP = (0.08, 0.12, 0.84, 0.76)
 
 
 @dataclass(slots=True)
@@ -67,9 +68,22 @@ class DocumentPreprocessor:
                 )
 
             if aligned_document is None:
+                fallback_document = self._extract_ine_front_fallback(image_bytes)
+                if fallback_document is None:
+                    return PreprocessedDocument(
+                        image_bytes=image_bytes,
+                        quality_flags=["document_alignment_failed"],
+                    )
+
+                debug_image_path = self._maybe_write_debug_image(fallback_document, "ine-front")
+                if debug_image_path:
+                    logger.info("Saved INE front fallback document to %s", debug_image_path)
+
                 return PreprocessedDocument(
-                    image_bytes=image_bytes,
-                    quality_flags=["document_alignment_failed"],
+                    image_bytes=fallback_document,
+                    used_specialized_crop=True,
+                    debug_image_path=debug_image_path,
+                    quality_flags=["heuristic_crop_used", "document_alignment_failed"],
                 )
 
             debug_image_path = self._maybe_write_debug_image(aligned_document, "ine-front")
@@ -144,6 +158,15 @@ class DocumentPreprocessor:
         success, encoded = cv2.imencode(".jpg", aligned)
         if not success:
             raise ValueError("Could not encode aligned document image.")
+        return encoded.tobytes()
+
+    def _extract_ine_front_fallback(self, image_bytes: bytes) -> bytes | None:
+        image = _decode_image(image_bytes)
+        x, y, w, h = _relative_crop_box(image.shape[1], image.shape[0], _INE_FRONT_FALLBACK_CROP)
+        crop = image[y : y + h, x : x + w]
+        success, encoded = cv2.imencode(".jpg", crop)
+        if not success:
+            return None
         return encoded.tobytes()
 
     def _extract_heuristic_crop(self, image_bytes: bytes) -> bytes | None:
