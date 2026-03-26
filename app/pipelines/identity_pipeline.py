@@ -67,6 +67,13 @@ class IdentityPipeline(BasePipeline):
             image_bytes=image_bytes,
             document_type=document_type,
         )
+        logger.info(
+            "Identity preprocessing | request_id=%s used_specialized_crop=%s quality_flags=%s debug_image_path=%s",
+            request_id,
+            preprocessed.used_specialized_crop,
+            preprocessed.quality_flags,
+            preprocessed.debug_image_path,
+        )
 
         # Step 1 — OCR
         ocr_result = await self.ocr_service.extract_text(
