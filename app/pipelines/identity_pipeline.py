@@ -5,6 +5,7 @@ from uuid import uuid4
 from app.models.responses import IdentityExtractedData, IdentityValidationResponse
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
+from app.services.document_preprocessor import document_preprocessor
 from app.services.ocr_service import identity_ocr_service
 from app.services.rules_engine import _parse_date, rules_engine
 from app.services.scoring_service import ScoringService, scoring_service
@@ -62,8 +63,13 @@ class IdentityPipeline(BasePipeline):
             document_type,
         )
 
+        preprocessed = document_preprocessor.preprocess_identity_document(
+            image_bytes=image_bytes,
+            document_type=document_type,
+        )
+
         # Step 1 — OCR
-        ocr_result = await self.ocr_service.extract_text(image_bytes, media_type)
+        ocr_result = await self.ocr_service.extract_text(preprocessed.image_bytes, media_type)
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
@@ -147,9 +153,10 @@ class IdentityPipeline(BasePipeline):
             requires_human_review=scoring_result.requires_human_review,
             extracted_data=extracted,
             is_expired=is_expired,
-            quality_flags=vision_result.quality_flags,
+            quality_flags=[*preprocessed.quality_flags, *vision_result.quality_flags],
             consistency_flags=vision_result.consistency_flags,
             breakdown=scoring_result.breakdown,
+            used_specialized_crop=preprocessed.used_specialized_crop,
         )
 
     @staticmethod

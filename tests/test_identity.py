@@ -296,6 +296,116 @@ class TestIdentityValidationSuccess:
         assert body["quality_flags"] == ["blurry_image"]
         assert body["consistency_flags"] == ["document_type_uncertain"]
 
+    def test_ine_reverso_uses_preprocessed_crop(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_ine_reverso_result: OCRResult,
+        vision_authentic_result: VisionResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        cropped_bytes = b"cropped-image"
+
+        with (
+            patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": cropped_bytes,
+                        "quality_flags": [],
+                        "used_specialized_crop": True,
+                    },
+                )(),
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_ine_reverso_result,
+            ) as ocr_mock,
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.rules_engine.validate_identity",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/identity",
+                headers=api_headers,
+                data={"client_id": "client-004", "document_type": "INE_REVERSO"},
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        ocr_mock.assert_awaited_once_with(cropped_bytes, "image/png")
+        body = resp.json()
+        assert body["used_specialized_crop"] is True
+
+    def test_ine_reverso_falls_back_when_preprocessing_fails(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_ine_reverso_result: OCRResult,
+        vision_authentic_result: VisionResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        with (
+            patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": dummy_png,
+                        "quality_flags": ["document_alignment_failed"],
+                        "used_specialized_crop": False,
+                    },
+                )(),
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_ine_reverso_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.rules_engine.validate_identity",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/identity",
+                headers=api_headers,
+                data={"client_id": "client-005", "document_type": "INE_REVERSO"},
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["used_specialized_crop"] is False
+        assert "document_alignment_failed" in body["quality_flags"]
+
     def test_ine_reverso_returns_only_id_data(
         self,
         client: TestClient,

@@ -256,3 +256,14 @@ Para `COMPROBANTE_DOMICILIO`, la respuesta incluye campos de dirección y `is_ex
 - El proveedor puede definirse globalmente con `AI_PROVIDER` o por pipeline con `AI_PROVIDER_IDENTITY` y `AI_PROVIDER_RECEIPT`.
 - Si necesitas separar extracción y visión, puedes usar overrides por etapa con `OCR_PROVIDER_*` y `VISION_PROVIDER_*`.
 - En identidad, el análisis visual está orientado a calidad y consistencia operativa, no a dictaminar falsificación.
+IMG_B64=$(base64 -w 0 /home/administrador/tmp/ine.jpg)
+
+curl -sS http://localhost:11434/api/generate \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"model\": \"qwen3-vl:2b\",
+    \"prompt\": \"Analyze this document image and extract all visible text. Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure: {\\\"raw_text\\\": \\\"<all text visible in the document as a single string>\\\", \\\"structured_fields\\\": {\\\"<field_name>\\\": \\\"<value>\\\"}, \\\"confidence\\\": <float between 0.0 and 1.0 representing extraction confidence>} For structured_fields, extract key-value pairs using lowercase English keys such as: date, total, issuer, receipt_number, full_name, id_number, curp, expiry_date, date_of_birth, address, rfc, folio. Only include fields that are actually visible in the document.\",
+    \"images\": [\"$IMG_B64\"],
+    \"stream\": false,
+    \"format\": \"json\"
+  }" | jq

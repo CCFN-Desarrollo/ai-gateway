@@ -115,6 +115,7 @@ class IdentityValidationResponse(BaseValidationResponse):
     quality_flags: list[str] = Field(default_factory=list)
     consistency_flags: list[str] = Field(default_factory=list)
     breakdown: dict = Field(default_factory=dict)
+    used_specialized_crop: bool = False
 
 
 # ---------------------------------------------------------------------------
