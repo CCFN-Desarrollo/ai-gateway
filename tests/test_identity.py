@@ -348,7 +348,11 @@ class TestIdentityValidationSuccess:
             )
 
         assert resp.status_code == 200
-        ocr_mock.assert_awaited_once_with(cropped_bytes, "image/png")
+        ocr_mock.assert_awaited_once_with(
+            cropped_bytes,
+            "image/png",
+            document_type="INE_REVERSO",
+        )
         body = resp.json()
         assert body["used_specialized_crop"] is True
 

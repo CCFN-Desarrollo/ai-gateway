@@ -27,6 +27,20 @@ For structured_fields, extract key-value pairs using lowercase English keys such
 date, total, issuer, receipt_number, full_name, id_number, curp, expiry_date, date_of_birth, address, rfc, folio.
 Only include fields that are actually visible in the document."""
 
+_INE_REVERSO_EXTRACT_PROMPT = """This is the back side of a Mexican INE card.
+Look for the main printed identifier on the back, such as folio, id number, CIC, OCR, or a similar visible document code.
+Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+{
+  "raw_text": "<visible identifier text or short OCR snippet>",
+  "structured_fields": {
+    "id_number": "<best identifier found>",
+    "label": "<folio|id_number|cic|ocr|unknown>"
+  },
+  "confidence": <float between 0.0 and 1.0>
+}
+
+If nothing is clearly visible, return an empty id_number and label "unknown"."""
+
 _VISION_PROMPT_TEMPLATE = """Analyze this {document_type} document image for authenticity and potential fraud.
 
 Examine:
@@ -75,12 +89,18 @@ class OpenAIOCRService:
         self.settings = config
         self.client = AsyncOpenAI(api_key=self.settings.OPENAI_API_KEY)
 
-    async def extract_text(self, image_bytes: bytes, media_type: str = "image/jpeg") -> OCRResult:
+    async def extract_text(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/jpeg",
+        document_type: str | None = None,
+    ) -> OCRResult:
         validated_media_type = normalize_media_type(media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+        prompt = _INE_REVERSO_EXTRACT_PROMPT if document_type == "INE_REVERSO" else _EXTRACT_PROMPT
 
         logger.debug("Sending image to OpenAI for OCR extraction (size=%d bytes)", len(image_bytes))
-        response = await self._request(_EXTRACT_PROMPT, image_b64, validated_media_type, "OCR")
+        response = await self._request(prompt, image_b64, validated_media_type, "OCR")
         raw_response = self._extract_text_block(
             response, "OCR provider returned an unexpected response shape."
         )
