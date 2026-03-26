@@ -40,6 +40,23 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 
 If nothing is clearly visible, return an empty id_number and label "unknown"."""
 
+_INE_FRONT_EXTRACT_PROMPT = """This is the front side of a Mexican INE card.
+Extract only the main operational identity fields needed for validation.
+Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+{
+  "raw_text": "<relevant visible text from the front side>",
+  "structured_fields": {
+    "full_name": "<full name if visible>",
+    "id_number": "<document identifier if visible>",
+    "curp": "<CURP if visible>",
+    "expiry_date": "<expiry date if visible>",
+    "date_of_birth": "<date of birth if visible>"
+  },
+  "confidence": <float between 0.0 and 1.0>
+}
+
+Only include fields that are clearly visible on the front side of the card."""
+
 _IDENTITY_VISION_PROMPT_TEMPLATE = """Analyze this {document_type} identity document image for operational validation, not forensic authenticity.
 
 Assess:
@@ -75,7 +92,13 @@ class OllamaOCRService:
     ) -> OCRResult:
         del media_type
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-        prompt = _INE_REVERSO_EXTRACT_PROMPT if document_type == "INE_REVERSO" else _EXTRACT_PROMPT
+        prompt = (
+            _INE_REVERSO_EXTRACT_PROMPT
+            if document_type == "INE_REVERSO"
+            else _INE_FRONT_EXTRACT_PROMPT
+            if document_type == "INE"
+            else _EXTRACT_PROMPT
+        )
 
         logger.debug("Sending image to Ollama for OCR extraction (size=%d bytes)", len(image_bytes))
 

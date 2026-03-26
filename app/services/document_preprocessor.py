@@ -46,7 +46,7 @@ class DocumentPreprocessor:
         image_bytes: bytes,
         document_type: str,
     ) -> PreprocessedDocument:
-        if document_type != "INE_REVERSO":
+        if document_type not in {"INE", "INE_REVERSO"}:
             return PreprocessedDocument(image_bytes=image_bytes)
 
         if cv2 is None or np is None:
@@ -54,6 +54,32 @@ class DocumentPreprocessor:
             return PreprocessedDocument(
                 image_bytes=image_bytes,
                 quality_flags=["preprocessing_unavailable"],
+            )
+
+        if document_type == "INE":
+            try:
+                aligned_document = self._extract_aligned_document(image_bytes)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("INE preprocessing failed: %s", exc)
+                return PreprocessedDocument(
+                    image_bytes=image_bytes,
+                    quality_flags=["preprocessing_failed"],
+                )
+
+            if aligned_document is None:
+                return PreprocessedDocument(
+                    image_bytes=image_bytes,
+                    quality_flags=["document_alignment_failed"],
+                )
+
+            debug_image_path = self._maybe_write_debug_image(aligned_document, "ine-front")
+            if debug_image_path:
+                logger.info("Saved INE front aligned document to %s", debug_image_path)
+
+            return PreprocessedDocument(
+                image_bytes=aligned_document,
+                used_specialized_crop=True,
+                debug_image_path=debug_image_path,
             )
 
         try:
@@ -73,7 +99,7 @@ class DocumentPreprocessor:
                     quality_flags=["document_alignment_failed"],
                 )
 
-            debug_image_path = self._maybe_write_debug_crop(fallback_crop)
+            debug_image_path = self._maybe_write_debug_image(fallback_crop, "ine-reverso")
             if debug_image_path:
                 logger.info("Saved INE reverso fallback crop to %s", debug_image_path)
 
@@ -84,7 +110,7 @@ class DocumentPreprocessor:
                 quality_flags=["heuristic_crop_used"],
             )
 
-        debug_image_path = self._maybe_write_debug_crop(crop)
+        debug_image_path = self._maybe_write_debug_image(crop, "ine-reverso")
         if debug_image_path:
             logger.info("Saved INE reverso crop to %s", debug_image_path)
 
@@ -108,6 +134,18 @@ class DocumentPreprocessor:
             raise ValueError("Could not encode cropped document image.")
         return encoded.tobytes()
 
+    def _extract_aligned_document(self, image_bytes: bytes) -> bytes | None:
+        image = _decode_image(image_bytes)
+        corners = _find_document_corners(image)
+        if corners is None:
+            return None
+
+        aligned = _warp_document(image, corners)
+        success, encoded = cv2.imencode(".jpg", aligned)
+        if not success:
+            raise ValueError("Could not encode aligned document image.")
+        return encoded.tobytes()
+
     def _extract_heuristic_crop(self, image_bytes: bytes) -> bytes | None:
         image = _decode_image(image_bytes)
         x, y, w, h = _relative_crop_box(image.shape[1], image.shape[0], _INE_REVERSO_FALLBACK_CROP)
@@ -117,13 +155,13 @@ class DocumentPreprocessor:
             return None
         return encoded.tobytes()
 
-    def _maybe_write_debug_crop(self, image_bytes: bytes) -> str | None:
+    def _maybe_write_debug_image(self, image_bytes: bytes, prefix: str) -> str | None:
         if not self.debug_dir:
             return None
 
         directory = Path(self.debug_dir)
         directory.mkdir(parents=True, exist_ok=True)
-        output_path = directory / f"ine-reverso-crop-{uuid4().hex}.jpg"
+        output_path = directory / f"{prefix}-{uuid4().hex}.jpg"
         output_path.write_bytes(image_bytes)
         return str(output_path)
 
