@@ -90,7 +90,7 @@ class IdentityPipeline(BasePipeline):
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
-        if document_type == "INE_REVERSO":
+        if document_type in {"INE", "INE_REVERSO"}:
             vision_result = self._build_neutral_vision_result()
             logger.info(
                 "Skipping vision stage for request_id=%s document_type=%s",
