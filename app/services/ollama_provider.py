@@ -173,7 +173,7 @@ async def _request_ollama_json(
                 response = await client.post(f"{base_url}/api/generate", json=payload)
             response.raise_for_status()
             body = response.json()
-            content = body.get("response")
+            content = _extract_ollama_content(body, operation_name)
             if not isinstance(content, str) or not content.strip():
                 logger.warning(
                     "Ollama %s returned unexpected payload: %s",
@@ -205,3 +205,19 @@ def _truncate_for_log(payload: object) -> str:
     if len(text) <= _MAX_DEBUG_PAYLOAD_CHARS:
         return text
     return f"{text[:_MAX_DEBUG_PAYLOAD_CHARS]}...<truncated>"
+
+
+def _extract_ollama_content(body: dict, operation_name: str) -> str | None:
+    response_content = body.get("response")
+    if isinstance(response_content, str) and response_content.strip():
+        return response_content
+
+    thinking_content = body.get("thinking")
+    if isinstance(thinking_content, str) and thinking_content.strip():
+        logger.warning(
+            "Ollama %s returned content in 'thinking'; using it as fallback.",
+            operation_name,
+        )
+        return thinking_content
+
+    return None

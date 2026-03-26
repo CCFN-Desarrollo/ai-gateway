@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -12,6 +13,10 @@ from app.services.scoring_service import ScoringService, scoring_service
 from app.services.vision_service import identity_vision_service
 
 logger = logging.getLogger(__name__)
+_INE_REVERSO_ID_PATTERNS = (
+    re.compile(r"IDMEX\d+", re.IGNORECASE),
+    re.compile(r"\b[A-Z]{4,}\d{6,}\b"),
+)
 
 
 class IdentityPipeline(BasePipeline):
@@ -124,6 +129,13 @@ class IdentityPipeline(BasePipeline):
 
         # Build extracted data from OCR structured fields
         fields = ocr_result.structured_fields
+        if document_type == "INE_REVERSO":
+            fields = dict(fields)
+            normalized_id = self._normalize_ine_reverso_id(
+                fields.get("id_number"), ocr_result.raw_text
+            )
+            if normalized_id:
+                fields["id_number"] = normalized_id
         expiry_date_str = rules_engine.get_expiry_date_str(fields)
         is_expired = self._compute_is_expired(expiry_date_str)
 
@@ -179,6 +191,25 @@ class IdentityPipeline(BasePipeline):
         if parsed is None:
             return False
         return parsed <= datetime.now()
+
+    @staticmethod
+    def _normalize_ine_reverso_id(
+        candidate_id: object,
+        raw_text: str,
+    ) -> str | None:
+        texts_to_scan = []
+        if isinstance(candidate_id, str) and candidate_id.strip():
+            texts_to_scan.append(candidate_id)
+        if raw_text.strip():
+            texts_to_scan.append(raw_text)
+
+        for text in texts_to_scan:
+            normalized = " ".join(text.split())
+            for pattern in _INE_REVERSO_ID_PATTERNS:
+                match = pattern.search(normalized)
+                if match:
+                    return match.group(0).upper()
+        return str(candidate_id).strip() if isinstance(candidate_id, str) else None
 
 
 identity_pipeline = IdentityPipeline(
