@@ -50,6 +50,7 @@ class Settings(BaseSettings):
 
     # Max file size in MB
     MAX_FILE_SIZE_MB: int = 10
+    PREPROCESS_DEBUG_DIR: str = ""
 
     @property
     def api_keys_list(self) -> list[str]:

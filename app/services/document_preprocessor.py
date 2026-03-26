@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
+from uuid import uuid4
 
 try:
     import cv2
@@ -26,6 +28,7 @@ _INE_REVERSO_ID_CROP = (0.52, 0.60, 0.38, 0.22)
 class PreprocessedDocument:
     image_bytes: bytes
     used_specialized_crop: bool = False
+    debug_image_path: str | None = None
     quality_flags: list[str] | None = None
 
     def __post_init__(self) -> None:
@@ -34,6 +37,9 @@ class PreprocessedDocument:
 
 
 class DocumentPreprocessor:
+    def __init__(self, debug_dir: str = "") -> None:
+        self.debug_dir = debug_dir.strip()
+
     def preprocess_identity_document(
         self,
         image_bytes: bytes,
@@ -64,9 +70,14 @@ class DocumentPreprocessor:
                 quality_flags=["document_alignment_failed"],
             )
 
+        debug_image_path = self._maybe_write_debug_crop(crop)
+        if debug_image_path:
+            logger.info("Saved INE reverso crop to %s", debug_image_path)
+
         return PreprocessedDocument(
             image_bytes=crop,
             used_specialized_crop=True,
+            debug_image_path=debug_image_path,
         )
 
     def _extract_ine_reverso_identifier_crop(self, image_bytes: bytes) -> bytes | None:
@@ -82,6 +93,16 @@ class DocumentPreprocessor:
         if not success:
             raise ValueError("Could not encode cropped document image.")
         return encoded.tobytes()
+
+    def _maybe_write_debug_crop(self, image_bytes: bytes) -> str | None:
+        if not self.debug_dir:
+            return None
+
+        directory = Path(self.debug_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        output_path = directory / f"ine-reverso-crop-{uuid4().hex}.jpg"
+        output_path.write_bytes(image_bytes)
+        return str(output_path)
 
 
 def _decode_image(image_bytes: bytes) -> np.ndarray:
@@ -170,4 +191,6 @@ def _relative_crop_box(
     return x, y, w, h
 
 
-document_preprocessor = DocumentPreprocessor()
+from app.core.config import settings
+
+document_preprocessor = DocumentPreprocessor(debug_dir=settings.PREPROCESS_DEBUG_DIR)
