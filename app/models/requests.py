@@ -32,3 +32,48 @@ class ReceiptValidationRequest(BaseModel):
 class IdentityValidationRequest(BaseModel):
     client_id: str
     document_type: DocumentType
+
+
+class ValidationCaseStatus(str, Enum):
+    COLLECTING = "COLLECTING"
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    WAITING_AUTHORIZATION = "WAITING_AUTHORIZATION"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
+
+
+class ValidationDocumentStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
+class AuthorizationStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ValidationChannel(str, Enum):
+    TELEGRAM = "telegram"
+    WHATSAPP = "whatsapp"
+    WEB = "web"
+    CRM = "crm"
+    MANUAL = "manual"
+
+
+class ValidationCaseDocumentInput(BaseModel):
+    document_type: str
+    file_name: str
+    content_type: str
+    content_base64: str
+
+
+class ValidationCaseCreateRequest(BaseModel):
+    client_id: str
+    channel: ValidationChannel = ValidationChannel.MANUAL
+    chat_id: str | None = None
+    documents: list[ValidationCaseDocumentInput]

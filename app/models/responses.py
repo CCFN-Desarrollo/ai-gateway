@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.requests import AuthorizationStatus, ValidationCaseStatus, ValidationDocumentStatus
+
 # ---------------------------------------------------------------------------
 # Decisions
 # ---------------------------------------------------------------------------
@@ -128,3 +130,49 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     uptime_seconds: float
+
+
+class ValidationDocumentSummary(BaseModel):
+    document_id: str
+    document_type: str
+    file_name: str
+    status: ValidationDocumentStatus
+    error: str | None = None
+    result: dict | None = None
+
+
+class ConsolidatedValidationData(BaseModel):
+    full_name: str | None = None
+    id_number: str | None = None
+    curp: str | None = None
+    expiry_date: str | None = None
+    date_of_birth: str | None = None
+    street: str | None = None
+    colony: str | None = None
+    zip_code: str | None = None
+    city: str | None = None
+    state: str | None = None
+    issue_date: str | None = None
+    address_is_expired: bool | None = None
+
+
+class ValidationCaseCreateResponse(BaseModel):
+    case_id: str
+    status: ValidationCaseStatus
+
+
+class ValidationCaseResponse(BaseModel):
+    case_id: str
+    client_id: str
+    channel: str
+    chat_id: str | None = None
+    status: ValidationCaseStatus
+    authorization_status: AuthorizationStatus
+    rejection_reason_code: str | None = None
+    rejection_reason_text: str | None = None
+    documents: list[ValidationDocumentSummary] = Field(default_factory=list)
+    consolidated_data: ConsolidatedValidationData = Field(
+        default_factory=ConsolidatedValidationData
+    )
+    created_at: datetime
+    updated_at: datetime
