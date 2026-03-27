@@ -64,7 +64,11 @@ class ReceiptPipeline(BasePipeline):
         )
 
         # Step 1 — OCR
-        ocr_result = await self.ocr_service.extract_text(image_bytes, media_type)
+        ocr_result = await self.ocr_service.extract_text(
+            image_bytes,
+            media_type,
+            document_type=document_type,
+        )
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI

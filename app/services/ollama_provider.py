@@ -57,6 +57,26 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 
 Only include fields that are clearly visible on the front side of the card."""
 
+_ADDRESS_PROOF_EXTRACT_PROMPT = """This is a Mexican proof-of-address document such as a utility bill.
+Extract only the address and freshness fields needed for validation.
+Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+{
+  "raw_text": "<relevant visible text from the document>",
+  "structured_fields": {
+    "issuer": "<issuer or company name if visible>",
+    "street": "<street and number if visible>",
+    "colony": "<colony or neighborhood if visible>",
+    "zip_code": "<postal code if visible>",
+    "city": "<city or municipality if visible>",
+    "state": "<state if visible>",
+    "issue_date": "<document issue date in YYYY-MM-DD if visible>"
+  },
+  "confidence": <float between 0.0 and 1.0>
+}
+
+If the document shows a billing period, use the end date of that period as issue_date.
+Only include fields that are clearly visible."""
+
 _IDENTITY_VISION_PROMPT_TEMPLATE = """Analyze this {document_type} identity document image for operational validation, not forensic authenticity.
 
 Assess:
@@ -97,6 +117,8 @@ class OllamaOCRService:
             if document_type == "INE_REVERSO"
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
+            else _ADDRESS_PROOF_EXTRACT_PROMPT
+            if document_type == "COMPROBANTE_DOMICILIO"
             else _EXTRACT_PROMPT
         )
 
