@@ -24,6 +24,7 @@ _MAX_ASPECT_RATIO_DELTA = 0.4
 _INE_REVERSO_ID_CROP = (0.25, 0.60, 0.65, 0.22)
 _INE_REVERSO_FALLBACK_CROP = (0.10, 0.50, 0.80, 0.32)
 _INE_FRONT_FALLBACK_CROP = (0.08, 0.12, 0.84, 0.76)
+_ADDRESS_PROOF_MAIN_CROP = (0.02, 0.00, 0.44, 0.48)
 
 
 @dataclass(slots=True)
@@ -47,7 +48,7 @@ class DocumentPreprocessor:
         image_bytes: bytes,
         document_type: str,
     ) -> PreprocessedDocument:
-        if document_type not in {"INE", "INE_REVERSO"}:
+        if document_type not in {"INE", "INE_REVERSO", "COMPROBANTE_DOMICILIO"}:
             return PreprocessedDocument(image_bytes=image_bytes)
 
         if cv2 is None or np is None:
@@ -92,6 +93,29 @@ class DocumentPreprocessor:
 
             return PreprocessedDocument(
                 image_bytes=aligned_document,
+                used_specialized_crop=True,
+                debug_image_path=debug_image_path,
+            )
+
+        if document_type == "COMPROBANTE_DOMICILIO":
+            try:
+                focused_document = self._extract_address_proof_focus(image_bytes)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Address proof preprocessing failed: %s", exc)
+                return PreprocessedDocument(
+                    image_bytes=image_bytes,
+                    quality_flags=["preprocessing_failed"],
+                )
+
+            debug_image_path = self._maybe_write_debug_image(
+                focused_document,
+                "address-proof",
+            )
+            if debug_image_path:
+                logger.info("Saved address-proof focused crop to %s", debug_image_path)
+
+            return PreprocessedDocument(
+                image_bytes=focused_document,
                 used_specialized_crop=True,
                 debug_image_path=debug_image_path,
             )
@@ -167,6 +191,15 @@ class DocumentPreprocessor:
         success, encoded = cv2.imencode(".jpg", crop)
         if not success:
             return None
+        return encoded.tobytes()
+
+    def _extract_address_proof_focus(self, image_bytes: bytes) -> bytes:
+        image = _decode_image(image_bytes)
+        x, y, w, h = _relative_crop_box(image.shape[1], image.shape[0], _ADDRESS_PROOF_MAIN_CROP)
+        crop = image[y : y + h, x : x + w]
+        success, encoded = cv2.imencode(".jpg", crop)
+        if not success:
+            raise ValueError("Could not encode address proof focus image.")
         return encoded.tobytes()
 
     def _extract_heuristic_crop(self, image_bytes: bytes) -> bytes | None:

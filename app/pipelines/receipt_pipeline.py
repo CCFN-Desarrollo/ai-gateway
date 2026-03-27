@@ -2,9 +2,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from app.models.responses import ReceiptExtractedData, ReceiptValidationResponse
+from app.models.responses import ReceiptExtractedData, ReceiptValidationResponse, VisionResult
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
+from app.services.document_preprocessor import document_preprocessor
 from app.services.ocr_service import receipt_ocr_service
 from app.services.rules_engine import _parse_date, rules_engine
 from app.services.scoring_service import ScoringService, scoring_service
@@ -63,26 +64,46 @@ class ReceiptPipeline(BasePipeline):
             document_type,
         )
 
+        preprocessed = document_preprocessor.preprocess_identity_document(
+            image_bytes=image_bytes,
+            document_type=document_type,
+        )
+        logger.info(
+            "Receipt preprocessing | request_id=%s used_specialized_crop=%s quality_flags=%s debug_image_path=%s",
+            request_id,
+            preprocessed.used_specialized_crop,
+            preprocessed.quality_flags,
+            preprocessed.debug_image_path,
+        )
+
         # Step 1 — OCR
         ocr_result = await self.ocr_service.extract_text(
-            image_bytes,
+            preprocessed.image_bytes,
             media_type,
             document_type=document_type,
         )
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
-        vision_result = await self.vision_service.analyze_document(
-            image_bytes,
-            document_type,
-            media_type,
-        )
-        logger.debug(
-            "Vision done | request_id=%s authentic=%s score=%.2f",
-            request_id,
-            vision_result.is_authentic,
-            vision_result.authenticity_score,
-        )
+        if document_type == "COMPROBANTE_DOMICILIO":
+            vision_result = self._build_neutral_vision_result()
+            logger.info(
+                "Skipping vision stage for request_id=%s document_type=%s",
+                request_id,
+                document_type,
+            )
+        else:
+            vision_result = await self.vision_service.analyze_document(
+                image_bytes,
+                document_type,
+                media_type,
+            )
+            logger.debug(
+                "Vision done | request_id=%s authentic=%s score=%.2f",
+                request_id,
+                vision_result.is_authentic,
+                vision_result.authenticity_score,
+            )
 
         # Step 3 — Rules engine
         rules_result = rules_engine.validate_receipt(ocr_result, document_type)
@@ -156,6 +177,19 @@ class ReceiptPipeline(BasePipeline):
         if parsed is None:
             return False
         return parsed < (datetime.now() - timedelta(days=92))
+
+    @staticmethod
+    def _build_neutral_vision_result() -> VisionResult:
+        return VisionResult(
+            is_authentic=True,
+            fraud_indicators=[],
+            authenticity_score=1.0,
+            document_matches_expected_type=True,
+            visual_validation_score=1.0,
+            quality_flags=[],
+            consistency_flags=[],
+            notes="Vision skipped for address-proof OCR-only flow.",
+        )
 
 
 receipt_pipeline = ReceiptPipeline(
