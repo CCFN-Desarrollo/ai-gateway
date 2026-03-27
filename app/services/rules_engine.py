@@ -144,7 +144,7 @@ class RulesEngine:
         failed: list[str] = []
 
         flags: list[str] = []
-        if document_type == "COMPROBANTE_DOMICILIO":
+        if document_type == "ADDRESS_PROOF":
             rules = [
                 ("has_issue_date", _has_field(fields, _DATE_KEYS)),
                 ("has_issuer", _has_field(fields, _ISSUER_KEYS)),
@@ -168,7 +168,7 @@ class RulesEngine:
             else:
                 failed.append(rule_name)
 
-        if document_type == "COMPROBANTE_DOMICILIO":
+        if document_type == "ADDRESS_PROOF":
             issue_status = self.get_issue_date_freshness_status(fields)
             if issue_status == "valid":
                 passed.append("issue_date_within_3_months")
@@ -179,7 +179,7 @@ class RulesEngine:
                 flags.append("unknown_issue_date")
 
         rules_score = len(passed) / len(rules) if rules else 0.0
-        if document_type == "COMPROBANTE_DOMICILIO":
+        if document_type == "ADDRESS_PROOF":
             denominator = len(passed) + len(failed)
             rules_score = len(passed) / denominator if denominator else 0.0
         logger.debug(

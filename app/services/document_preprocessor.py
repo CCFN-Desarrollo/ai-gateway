@@ -48,7 +48,7 @@ class DocumentPreprocessor:
         image_bytes: bytes,
         document_type: str,
     ) -> PreprocessedDocument:
-        if document_type not in {"INE", "INE_REVERSO", "COMPROBANTE_DOMICILIO"}:
+        if document_type not in {"INE", "INE_REVERSO", "ADDRESS_PROOF"}:
             return PreprocessedDocument(image_bytes=image_bytes)
 
         if cv2 is None or np is None:
@@ -97,7 +97,7 @@ class DocumentPreprocessor:
                 debug_image_path=debug_image_path,
             )
 
-        if document_type == "COMPROBANTE_DOMICILIO":
+        if document_type == "ADDRESS_PROOF":
             try:
                 focused_document = self._extract_address_proof_focus(image_bytes)
             except Exception as exc:  # pragma: no cover

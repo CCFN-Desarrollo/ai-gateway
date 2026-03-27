@@ -313,14 +313,14 @@ class TestReceiptValidationSuccess:
                 data={
                     "client_id": "client-002",
                     "source": "manual",
-                    "document_type": "COMPROBANTE_DOMICILIO",
+                    "document_type": "ADDRESS_PROOF",
                 },
                 files=_upload_file(dummy_png),
             )
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["document_type"] == "COMPROBANTE_DOMICILIO"
+        assert body["document_type"] == "ADDRESS_PROOF"
         assert body["extracted_data"]["street"] == "CALLE REFORMA 123"
         assert body["extracted_data"]["colony"] == "COL. CENTRO"
         assert body["extracted_data"]["zip_code"] == "06600"

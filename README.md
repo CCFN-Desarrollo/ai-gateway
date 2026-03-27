@@ -191,7 +191,7 @@ curl -X POST http://localhost:8000/api/v1/validate/receipt \
   -H "X-API-Key: test-key-1" \
   -F "client_id=client-001" \
   -F "source=manual" \
-  -F "document_type=COMPROBANTE_DOMICILIO" \
+  -F "document_type=ADDRESS_PROOF" \
   -F "file=@/ruta/al/recibo.png;type=image/png"
 ```
 
@@ -208,7 +208,7 @@ curl -X POST http://localhost:8000/api/v1/validate/identity \
 Valores válidos:
 
 - `document_type` en identidad: `INE`, `INE_REVERSO`, `PASAPORTE`, `LICENCIA`
-- `document_type` en receipt: `RECEIPT`, `COMPROBANTE_DOMICILIO`
+- `document_type` en receipt: `RECEIPT`, `ADDRESS_PROOF`
 - `source`: `whatsapp`, `crm`, `web`, `manual`
 - tipos de archivo aceptados: `image/jpeg`, `image/png`, `image/webp`
 
@@ -246,7 +246,7 @@ La API responde con una decisión final:
 
 Además devuelve datos extraídos, breakdown del score y señales de fraude cuando existan.
 
-Para `COMPROBANTE_DOMICILIO`, la respuesta incluye campos de dirección y `is_expired`, considerando vencido cualquier comprobante con más de 3 meses de antigüedad.
+Para `ADDRESS_PROOF`, la respuesta incluye campos de dirección y `is_expired`, considerando vencido cualquier comprobante con más de 3 meses de antigüedad.
 
 ## Notas operativas
 

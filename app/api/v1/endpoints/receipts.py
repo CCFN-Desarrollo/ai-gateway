@@ -37,7 +37,7 @@ async def validate_receipt(
     ),
     document_type: ReceiptDocumentType = Form(
         ReceiptDocumentType.RECEIPT,
-        description="Type of receipt document: RECEIPT or COMPROBANTE_DOMICILIO",
+        description="Type of receipt document: RECEIPT or ADDRESS_PROOF",
     ),
     _api_key: str = Depends(verify_api_key),
 ) -> ReceiptValidationResponse:
@@ -47,7 +47,7 @@ async def validate_receipt(
     - **file**: Multipart image file (JPEG / PNG / WebP, max configured MB)
     - **client_id**: Client identifier for traceability
     - **source**: Channel that submitted the document (whatsapp, crm, web, manual)
-    - **document_type**: RECEIPT | COMPROBANTE_DOMICILIO
+    - **document_type**: RECEIPT | ADDRESS_PROOF
     """
     validate_image_file(file)
 

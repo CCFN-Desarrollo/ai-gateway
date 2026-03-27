@@ -118,7 +118,7 @@ class OllamaOCRService:
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
-            if document_type == "COMPROBANTE_DOMICILIO"
+            if document_type == "ADDRESS_PROOF"
             else _EXTRACT_PROMPT
         )
 

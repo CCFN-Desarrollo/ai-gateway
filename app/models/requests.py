@@ -19,7 +19,8 @@ class DocumentType(str, Enum):
 
 class ReceiptDocumentType(str, Enum):
     RECEIPT = "RECEIPT"
-    COMPROBANTE_DOMICILIO = "COMPROBANTE_DOMICILIO"
+    ADDRESS_PROOF = "ADDRESS_PROOF"
+    COMPROBANTE_DOMICILIO = "ADDRESS_PROOF"
 
 
 class ReceiptValidationRequest(BaseModel):
