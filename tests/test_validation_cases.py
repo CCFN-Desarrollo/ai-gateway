@@ -17,6 +17,8 @@ def test_create_validation_case_queues_case(client: TestClient, api_headers: dic
         "client_id": "0001231",
         "channel": "telegram",
         "chat_id": "123456",
+        "phone": "3312345678",
+        "email": "juan@example.com",
         "documents": [
             {
                 "document_type": "INE",
@@ -40,6 +42,8 @@ def test_get_validation_case_returns_processed_status(client: TestClient, api_he
         "client_id": "0001231",
         "channel": "telegram",
         "chat_id": "123456",
+        "phone": "3312345678",
+        "email": "juan@example.com",
         "documents": [
             {
                 "document_type": "INE",
@@ -76,6 +80,10 @@ def test_get_validation_case_returns_processed_status(client: TestClient, api_he
             "app.services.validation_case_service.receipt_pipeline.process",
             new=AsyncMock(return_value=receipt_response),
         ),
+        patch(
+            "app.services.validation_case_service.crm_client.sync_case",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         create_response = client.post(
             "/api/v1/validation-cases",
@@ -94,5 +102,7 @@ def test_get_validation_case_returns_processed_status(client: TestClient, api_he
 
         assert body["status"] == "WAITING_AUTHORIZATION"
         assert body["authorization_status"] == "PENDING"
+        assert body["phone"] == "3312345678"
+        assert body["email"] == "juan@example.com"
         assert body["consolidated_data"]["full_name"] == "TEST USER"
         assert body["consolidated_data"]["street"] == "MAIN 123"

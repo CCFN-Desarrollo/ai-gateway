@@ -7,7 +7,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.core.config import settings
-from app.core.errors import ProviderResponseError, UpstreamServiceError
+from app.core.errors import (
+    CRMConflictError,
+    CRMValidationError,
+    ProviderResponseError,
+    UpstreamServiceError,
+)
 from app.models.requests import (
     AuthorizationStatus,
     ValidationCaseCreateRequest,
@@ -22,6 +27,7 @@ from app.models.responses import (
 )
 from app.pipelines.identity_pipeline import identity_pipeline
 from app.pipelines.receipt_pipeline import receipt_pipeline
+from app.services.crm_client import crm_client
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +82,8 @@ class ValidationCaseService:
             "client_id": payload.client_id,
             "channel": payload.channel.value,
             "chat_id": payload.chat_id,
+            "phone": payload.phone,
+            "email": payload.email,
             "status": ValidationCaseStatus.QUEUED.value,
             "authorization_status": AuthorizationStatus.PENDING.value,
             "rejection_reason_code": None,
@@ -154,10 +162,33 @@ class ValidationCaseService:
             )
             return
 
-        self._update_case(
-            record,
-            status=ValidationCaseStatus.WAITING_AUTHORIZATION.value,
-        )
+        try:
+            await crm_client.sync_case(record)
+        except CRMValidationError as exc:
+            self._update_case(
+                record,
+                status=ValidationCaseStatus.REJECTED.value,
+                authorization_status=AuthorizationStatus.REJECTED.value,
+                rejection_reason_code="CRM_VALIDATION_FAILED",
+                rejection_reason_text=str(exc),
+            )
+            return
+        except CRMConflictError:
+            self._update_case(
+                record,
+                status=ValidationCaseStatus.WAITING_AUTHORIZATION.value,
+            )
+            return
+        except Exception as exc:
+            self._update_case(
+                record,
+                status=ValidationCaseStatus.FAILED.value,
+                rejection_reason_code="CRM_SYNC_FAILED",
+                rejection_reason_text=str(exc),
+            )
+            return
+
+        self._update_case(record, status=ValidationCaseStatus.WAITING_AUTHORIZATION.value)
 
     async def _process_document(self, record: dict, document: dict) -> dict:
         image_bytes = Path(document["file_path"]).read_bytes()
@@ -273,6 +304,8 @@ class ValidationCaseService:
             client_id=record["client_id"],
             channel=record["channel"],
             chat_id=record.get("chat_id"),
+            phone=record.get("phone"),
+            email=record.get("email"),
             status=ValidationCaseStatus(record["status"]),
             authorization_status=AuthorizationStatus(record["authorization_status"]),
             rejection_reason_code=record.get("rejection_reason_code"),

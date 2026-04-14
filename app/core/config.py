@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
     PREPROCESS_DEBUG_DIR: str = ""
     VALIDATION_CASES_DIR: str = "data/validation_cases"
+    CRM_ENABLED: bool = False
+    CRM_BASE_URL: str = ""
+    CRM_API_KEY: str = ""
+    CRM_API_KEY_HEADER: str = "X-API-Key"
+    CRM_API_KEY_PREFIX: str = ""
+    CRM_TIMEOUT_SECONDS: float = 20.0
 
     @property
     def api_keys_list(self) -> list[str]:

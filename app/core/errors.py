@@ -12,3 +12,15 @@ class UpstreamServiceError(AIGatewayError):
 
 class ProviderResponseError(AIGatewayError):
     """Raised when an upstream provider returns an invalid response shape."""
+
+
+class CRMClientError(AIGatewayError):
+    """Raised when the CRM integration fails."""
+
+
+class CRMValidationError(CRMClientError):
+    """Raised when the CRM rejects the payload as invalid or incomplete."""
+
+
+class CRMConflictError(CRMClientError):
+    """Raised when the CRM reports the client is already in review."""
