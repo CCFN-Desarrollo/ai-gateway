@@ -76,4 +76,6 @@ class ValidationCaseCreateRequest(BaseModel):
     client_id: str
     channel: ValidationChannel = ValidationChannel.MANUAL
     chat_id: str | None = None
+    phone: str | None = None
+    email: str | None = None
     documents: list[ValidationCaseDocumentInput]

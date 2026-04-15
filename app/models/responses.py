@@ -166,6 +166,8 @@ class ValidationCaseResponse(BaseModel):
     client_id: str
     channel: str
     chat_id: str | None = None
+    phone: str | None = None
+    email: str | None = None
     status: ValidationCaseStatus
     authorization_status: AuthorizationStatus
     rejection_reason_code: str | None = None
