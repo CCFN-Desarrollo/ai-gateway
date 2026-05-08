@@ -13,9 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: |
-          poetry lock --no-update
-          poetry install --no-interaction
+        run: poetry install --no-interaction
 
       - name: Lint
         run: poetry run ruff check app/
