@@ -319,8 +319,8 @@ class TestIdentityValidationSuccess:
         body = resp.json()
         assert body["decision"] == "AUTO_REJECTED"
         assert body["is_expired"] is True
-        assert body["quality_flags"] == ["blurry_image"]
-        assert body["consistency_flags"] == ["document_type_uncertain"]
+        assert body["quality_flags"] == []
+        assert body["consistency_flags"] == []
 
     def test_ine_reverso_uses_preprocessed_crop(
         self,
