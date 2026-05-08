@@ -188,6 +188,8 @@ class DocumentPreprocessor:
         image = _decode_image(image_bytes)
         x, y, w, h = _relative_crop_box(image.shape[1], image.shape[0], _INE_FRONT_FALLBACK_CROP)
         crop = image[y : y + h, x : x + w]
+        if crop.size == 0:
+            return None
         success, encoded = cv2.imencode(".jpg", crop)
         if not success:
             return None
@@ -206,6 +208,8 @@ class DocumentPreprocessor:
         image = _decode_image(image_bytes)
         x, y, w, h = _relative_crop_box(image.shape[1], image.shape[0], _INE_REVERSO_FALLBACK_CROP)
         crop = image[y : y + h, x : x + w]
+        if crop.size == 0:
+            return None
         success, encoded = cv2.imencode(".jpg", crop)
         if not success:
             return None
