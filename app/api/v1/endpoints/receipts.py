@@ -30,12 +30,12 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     tags=["validation"],
 )
 async def validate_receipt(
-    file: UploadFile = File(..., description="Receipt image file (JPEG, PNG, WebP)"),
-    client_id: str = Form(..., description="Identifier of the submitting client"),
-    source: DocumentSource = Form(
+    file: UploadFile = File(..., description="Receipt image file (JPEG, PNG, WebP)"),  # noqa: B008
+    client_id: str = Form(..., description="Identifier of the submitting client"),  # noqa: B008
+    source: DocumentSource = Form(  # noqa: B008
         DocumentSource.MANUAL, description="Origin channel of the document"
     ),
-    document_type: ReceiptDocumentType = Form(
+    document_type: ReceiptDocumentType = Form(  # noqa: B008
         ReceiptDocumentType.RECEIPT,
         description="Type of receipt document: RECEIPT or ADDRESS_PROOF",
     ),

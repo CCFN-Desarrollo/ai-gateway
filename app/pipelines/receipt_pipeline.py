@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.models.responses import ReceiptExtractedData, ReceiptValidationResponse, VisionResult
@@ -154,7 +154,7 @@ class ReceiptPipeline(BasePipeline):
 
         return ReceiptValidationResponse(
             request_id=request_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             processing_time_ms=elapsed_ms,
             document_type=document_type,
             final_score=scoring_result.final_score,

@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.core.errors import UpstreamServiceError
@@ -185,7 +185,7 @@ class IdentityPipeline(BasePipeline):
 
         return IdentityValidationResponse(
             request_id=request_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             processing_time_ms=elapsed_ms,
             document_type=document_type,
             final_score=scoring_result.final_score,

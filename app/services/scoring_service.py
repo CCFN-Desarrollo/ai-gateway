@@ -62,9 +62,9 @@ class ScoringService:
         decision = self._apply_thresholds(final_score)
         if "expired_document" in rules_result.flags:
             decision = Decision.AUTO_REJECTED
-        elif "unknown_expiry" in rules_result.flags and decision == Decision.AUTO_APPROVED:
-            decision = Decision.HUMAN_REVIEW
-        elif self._requires_identity_review(vision_result, document_type):
+        elif (
+            "unknown_expiry" in rules_result.flags and decision == Decision.AUTO_APPROVED
+        ) or self._requires_identity_review(vision_result, document_type):
             decision = Decision.HUMAN_REVIEW
         requires_human_review = decision == Decision.HUMAN_REVIEW
 
