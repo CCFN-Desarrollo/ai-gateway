@@ -3,6 +3,8 @@ import base64
 import logging
 
 import anthropic
+import cv2
+import numpy as np
 
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
@@ -10,6 +12,35 @@ from app.models.responses import OCRResult, VisionResult
 from app.services.provider_common import normalize_media_type, parse_json_response
 
 logger = logging.getLogger(__name__)
+
+_ANTHROPIC_MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB target
+
+
+def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
+    """Compress image to stay under Anthropic's 5 MB limit. Returns (bytes, media_type)."""
+    if len(image_bytes) <= _ANTHROPIC_MAX_IMAGE_BYTES:
+        return image_bytes, None
+
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    for quality in (85, 70, 55, 40):
+        ok, encoded = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        if ok and len(encoded.tobytes()) <= _ANTHROPIC_MAX_IMAGE_BYTES:
+            logger.debug(
+                "Compressed image from %d to %d bytes (quality=%d)",
+                len(image_bytes),
+                len(encoded.tobytes()),
+                quality,
+            )
+            return encoded.tobytes(), "image/jpeg"
+
+    # Last resort: halve resolution
+    h, w = img.shape[:2]
+    img = cv2.resize(img, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    logger.warning("Image required resize to fit 5 MB limit, new size=%d bytes", len(encoded.tobytes()))
+    return encoded.tobytes(), "image/jpeg"
 
 _IDENTITY_DOCUMENT_TYPES = {"INE", "INE_REVERSO", "PASAPORTE", "LICENCIA"}
 
@@ -58,25 +89,31 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 
 Only include fields that are clearly visible on the front side of the card."""
 
-_ADDRESS_PROOF_EXTRACT_PROMPT = """This is a Mexican proof-of-address document such as a utility bill.
-Extract only the address and freshness fields needed for validation.
-Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+_ADDRESS_PROOF_EXTRACT_PROMPT = """Este es un comprobante de domicilio mexicano (recibo de luz, agua, teléfono, estado de cuenta, etc.).
+
+El documento puede contener DOS direcciones:
+- La dirección del CLIENTE (titular del servicio): es la que nos interesa. Aparece junto al nombre del cliente.
+- La dirección de la EMPRESA emisora (CFE, TELMEX, etc.): NO la queremos. Suele aparecer en el encabezado o pie con datos fiscales de la empresa.
+
+Extrae ÚNICAMENTE la dirección del CLIENTE titular, no la de la empresa emisora.
+
+Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones) con esta estructura exacta:
 {
-  "raw_text": "<relevant visible text from the document>",
+  "raw_text": "<texto relevante visible del documento>",
   "structured_fields": {
-    "issuer": "<issuer or company name if visible>",
-    "street": "<street and number if visible>",
-    "colony": "<colony or neighborhood if visible>",
-    "zip_code": "<postal code if visible>",
-    "city": "<city or municipality if visible>",
-    "state": "<state if visible>",
-    "issue_date": "<document issue date in YYYY-MM-DD if visible>"
+    "issuer": "<nombre de la empresa emisora (CFE, TELMEX, JUMAPAC, BBVA, etc.)>",
+    "street": "<calle y número del CLIENTE>",
+    "colony": "<colonia o fraccionamiento del CLIENTE>",
+    "zip_code": "<código postal del CLIENTE (5 dígitos)>",
+    "city": "<municipio o alcaldía del CLIENTE>",
+    "state": "<estado de la república del CLIENTE>",
+    "issue_date": "<fecha del recibo en formato YYYY-MM-DD>"
   },
-  "confidence": <float between 0.0 and 1.0>
+  "confidence": <float entre 0.0 y 1.0>
 }
 
-If the document shows a billing period, use the end date of that period as issue_date.
-Only include fields that are clearly visible."""
+Si el documento muestra un periodo de facturación, usa la fecha de fin del periodo como issue_date.
+Solo incluye campos que sean claramente visibles."""
 
 _VISION_PROMPT_TEMPLATE = """Analyze this {document_type} document image for authenticity and potential fraud.
 
@@ -132,7 +169,8 @@ class AnthropicOCRService:
         media_type: str = "image/jpeg",
         document_type: str | None = None,
     ) -> OCRResult:
-        validated_media_type = normalize_media_type(media_type)
+        image_bytes, compressed_media_type = _compress_image(image_bytes)
+        validated_media_type = normalize_media_type(compressed_media_type or media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
         prompt = (
             _INE_REVERSO_EXTRACT_PROMPT
@@ -140,7 +178,7 @@ class AnthropicOCRService:
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
-            if document_type == "ADDRESS_PROOF"
+            if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO")
             else _EXTRACT_PROMPT
         )
 
@@ -218,7 +256,8 @@ class AnthropicVisionService:
         document_type: str,
         media_type: str = "image/jpeg",
     ) -> VisionResult:
-        validated_media_type = normalize_media_type(media_type)
+        image_bytes, compressed_media_type = _compress_image(image_bytes)
+        validated_media_type = normalize_media_type(compressed_media_type or media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
         prompt_template = (
             _IDENTITY_VISION_PROMPT_TEMPLATE

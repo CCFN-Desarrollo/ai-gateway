@@ -85,7 +85,7 @@ class ReceiptPipeline(BasePipeline):
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
-        if document_type == "ADDRESS_PROOF":
+        if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO"):
             vision_result = self._build_neutral_vision_result()
             logger.info(
                 "Skipping vision stage for request_id=%s document_type=%s",
@@ -149,7 +149,7 @@ class ReceiptPipeline(BasePipeline):
         )
         issue_date_str = rules_engine.get_issue_date_str(fields)
         is_expired = (
-            self._compute_is_expired(issue_date_str) if document_type == "ADDRESS_PROOF" else False
+            self._compute_is_expired(issue_date_str) if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO") else False
         )
 
         return ReceiptValidationResponse(
