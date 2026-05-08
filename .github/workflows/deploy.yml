@@ -21,11 +21,5 @@ jobs:
       - name: Run tests
         run: poetry run pytest --cov=app --cov-report=term-missing -q
 
-      - name: Debug sudo
-        run: |
-          whoami
-          id
-          sudo -l
-
       - name: Restart service
-        run: sudo systemctl restart ai-gateway
+        run: sudo -n systemctl restart ai-gateway
