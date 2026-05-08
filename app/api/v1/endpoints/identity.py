@@ -30,9 +30,9 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     tags=["validation"],
 )
 async def validate_identity(
-    file: UploadFile = File(..., description="Identity document image (JPEG, PNG, WebP)"),
-    client_id: str = Form(..., description="Identifier of the submitting client"),
-    document_type: DocumentType = Form(
+    file: UploadFile = File(..., description="Identity document image (JPEG, PNG, WebP)"),  # noqa: B008
+    client_id: str = Form(..., description="Identifier of the submitting client"),  # noqa: B008
+    document_type: DocumentType = Form(  # noqa: B008
         ..., description="Type of identity document: INE, INE_REVERSO, PASAPORTE, LICENCIA"
     ),
     _api_key: str = Depends(verify_api_key),

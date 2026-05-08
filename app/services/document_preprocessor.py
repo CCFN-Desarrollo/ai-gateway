@@ -308,6 +308,6 @@ def _relative_crop_box(
     return x, y, w, h
 
 
-from app.core.config import settings
+from app.core.config import settings  # noqa: E402
 
 document_preprocessor = DocumentPreprocessor(debug_dir=settings.PREPROCESS_DEBUG_DIR)
