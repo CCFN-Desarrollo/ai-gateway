@@ -216,6 +216,19 @@ class TestIdentityValidationSuccess:
     ):
         with (
             patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": dummy_png,
+                        "quality_flags": [],
+                        "used_specialized_crop": False,
+                        "debug_image_path": None,
+                    },
+                )(),
+            ),
+            patch(
                 "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
                 new_callable=AsyncMock,
                 return_value=ocr_ine_result,
@@ -263,6 +276,19 @@ class TestIdentityValidationSuccess:
         scoring_rejected_result: ScoringResult,
     ):
         with (
+            patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": dummy_png,
+                        "quality_flags": [],
+                        "used_specialized_crop": False,
+                        "debug_image_path": None,
+                    },
+                )(),
+            ),
             patch(
                 "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
                 new_callable=AsyncMock,
