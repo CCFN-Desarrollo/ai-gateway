@@ -26,19 +26,17 @@ Un proceso KYC típico requiere:
 - **Validación de autenticidad**: el documento debe ser original, no alterado, no vencido
 - **Coincidencia de datos**: el nombre y domicilio deben ser consistentes entre documentos
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    PROCESO KYC                          │
-│                                                         │
-│  Cliente → Envía documentos → Validación → Decisión     │
-│                                   ↓                     │
-│              ┌─────────────────────────┐                │
-│              │      AI Gateway         │                │
-│              │  OCR + Vision + Rules   │                │
-│              └──────────┬──────────────┘                │
-│                         ↓                               │
-│         AUTO_APPROVED / HUMAN_REVIEW / AUTO_REJECTED    │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    C[Cliente] --> D[Envía documentos]
+    D --> GW[AI Gateway\nOCR + Vision + Rules]
+    GW --> AA([AUTO_APPROVED])
+    GW --> HR([HUMAN_REVIEW])
+    GW --> AR([AUTO_REJECTED])
+
+    style AA fill:#22c55e,color:#fff
+    style HR fill:#f59e0b,color:#fff
+    style AR fill:#ef4444,color:#fff
 ```
 
 ### 1.2 El problema que resuelve
@@ -54,11 +52,28 @@ Los clientes llegan por WhatsApp, web y CRM enviando fotos de documentos que pue
 
 ### 1.3 Flujo end-to-end del sistema KYC
 
-```
-WhatsApp Bot ─┐
-Portal Web   ─┼─► POST /api/v1/validate/identity    ─► AI Gateway ─► Decisión
-CRM          ─┘    POST /api/v1/validate/receipt         (este repo)
-              └─► POST /api/v1/validation-cases (async)
+```mermaid
+flowchart TD
+    WA[WhatsApp Bot] --> GW
+    WEB[Portal Web] --> GW
+    CRM[CRM] --> GW
+
+    GW[AI Gateway] --> ID["POST /validate/identity\nINE · Pasaporte · Licencia"]
+    GW --> RC["POST /validate/receipt\nComprobante · Recibo"]
+    GW --> VC["POST /validation-cases\nExpediente multi-documento async"]
+
+    ID --> DEC
+    RC --> DEC
+    VC --> DEC
+
+    DEC{Decisión}
+    DEC -->|score > 95| AA([AUTO_APPROVED])
+    DEC -->|70–95| HR([HUMAN_REVIEW])
+    DEC -->|score < 70| AR([AUTO_REJECTED])
+
+    style AA fill:#22c55e,color:#fff
+    style HR fill:#f59e0b,color:#fff
+    style AR fill:#ef4444,color:#fff
 ```
 
 Los documentos típicos de un expediente KYC completo son:
@@ -243,224 +258,130 @@ Construimos el gateway como un servicio FastAPI independiente con las siguientes
 
 ### 4.1 Arquitectura general
 
-```
-                         ┌─────────────────────────────────────────┐
-                         │              AI GATEWAY                  │
-                         │                                          │
-  Cliente ──────────────►│  POST /api/v1/validate/identity          │
-  (WhatsApp/CRM/Web)     │  POST /api/v1/validate/receipt           │
-                         │  POST /api/v1/validation-cases           │
-                         │                                          │
-                         │  ┌──────────────────────────────────┐   │
-                         │  │         PIPELINE                  │   │
-                         │  │                                   │   │
-                         │  │  1. Preprocesamiento (OpenCV)     │   │
-                         │  │         ↓                         │   │
-                         │  │  2. OCR ──────────────────────────┼───┼──► Anthropic Claude
-                         │  │         ↓                    ó    │   │    OpenAI GPT-4V
-                         │  │  3. Vision AI  ────────────────────┼───┼──► Ollama (local)
-                         │  │         ↓                         │   │
-                         │  │  4. Rules Engine (in-process)     │   │
-                         │  │         ↓                         │   │
-                         │  │  5. Scoring (in-process)          │   │
-                         │  └──────────────────────────────────┘   │
-                         │                ↓                         │
-                         │   AUTO_APPROVED / HUMAN_REVIEW /         │
-                         │   AUTO_REJECTED + breakdown completo     │
-                         └─────────────────────────────────────────┘
-                                          ↓
-                                    CRM / Sistema externo
+```mermaid
+flowchart TD
+    subgraph Clientes
+        WA[WhatsApp Bot]
+        WEB[Portal Web]
+        CRM_IN[CRM]
+    end
+
+    subgraph GW[AI Gateway]
+        EP1["POST /validate/identity"]
+        EP2["POST /validate/receipt"]
+        EP3["POST /validation-cases"]
+
+        subgraph Pipeline
+            P1[1. Preprocesamiento\nOpenCV]
+            P2[2. OCR]
+            P3[3. Vision AI]
+            P4[4. Rules Engine\nin-process]
+            P5[5. Scoring\nin-process]
+            P1 --> P2 --> P3 --> P4 --> P5
+        end
+    end
+
+    subgraph Providers[Providers de IA]
+        ANT[Anthropic Claude]
+        OAI[OpenAI GPT-4V]
+        OLL[Ollama local]
+    end
+
+    WA & WEB & CRM_IN --> EP1 & EP2 & EP3
+    EP1 & EP2 & EP3 --> Pipeline
+    P2 & P3 -.->|configurable| ANT & OAI & OLL
+
+    P5 --> AA([AUTO_APPROVED])
+    P5 --> HR([HUMAN_REVIEW])
+    P5 --> AR([AUTO_REJECTED])
+
+    AA & HR & AR --> CRM_OUT[CRM / Sistema externo]
+
+    style AA fill:#22c55e,color:#fff
+    style HR fill:#f59e0b,color:#fff
+    style AR fill:#ef4444,color:#fff
 ```
 
 ### 4.2 Pipeline de documentos de identidad (INE, Pasaporte, Licencia)
 
-```
-Imagen recibida
-      │
-      ▼
-┌─────────────────────────────┐
-│  1. PREPROCESAMIENTO        │
-│  (OpenCV)                   │
-│                             │
-│  INE:                       │
-│  • Detecta bordes del doc   │
-│  • Corrige perspectiva      │
-│  • Normaliza a 1000×630px   │
-│  • Fallback: crop heurístico│
-│                             │
-│  INE_REVERSO:               │
-│  • Crop zona ID (25-65%     │
-│    horizontal, 60-82% vert) │
-│                             │
-│  quality_flags si falla     │
-└──────────┬──────────────────┘
-           │ PreprocessedDocument
-           ▼
-┌─────────────────────────────┐
-│  2. OCR                     │
-│  (Claude / GPT-4V / Ollama) │
-│                             │
-│  Prompt especializado:      │
-│  • INE → nombre, CURP,      │
-│    id_number, vigencia      │
-│  • INE_REVERSO → solo folio │
-│  • PASAPORTE/LICENCIA →     │
-│    campos generales ID      │
-│                             │
-│  → OCRResult                │
-│    .raw_text                │
-│    .structured_fields       │
-│    .confidence (0.0-1.0)    │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  3. VISION AI               │
-│  (Claude / GPT-4V / Ollama) │
-│                             │
-│  ⚠️ SKIP para INE e         │
-│  INE_REVERSO (validación    │
-│  operacional, no forense)   │
-│                             │
-│  PASAPORTE / LICENCIA:      │
-│  • ¿Coincide tipo esperado? │
-│  • Calidad de imagen        │
-│  • Legibilidad de zonas     │
-│                             │
-│  → VisionResult             │
-│    .quality_flags           │
-│    .consistency_flags       │
-│    .visual_validation_score │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  4. RULES ENGINE            │
-│  (in-process, sin IA)       │
-│                             │
-│  INE / PASAPORTE /LICENCIA: │
-│  ✓ has_full_name            │
-│  ✓ has_id_number            │
-│  ✓ expiry_not_past          │
-│                             │
-│  INE_REVERSO:               │
-│  ✓ has_id_number            │
-│                             │
-│  Flags: expired_document,   │
-│  unknown_expiry             │
-│                             │
-│  → RulesResult              │
-│    .rules_score (0.0-1.0)   │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  5. SCORING                 │
-│                             │
-│  Pesos IDENTITY:            │
-│  OCR   40% × confidence     │
-│  Vision 20% × visual_score  │
-│  Rules 40% × rules_score    │
-│                             │
-│  final_score = suma × 100   │
-│                             │
-│  > 95  → AUTO_APPROVED      │
-│  70-95 → HUMAN_REVIEW       │
-│  < 70  → AUTO_REJECTED      │
-│                             │
-│  Overrides:                 │
-│  expired_document → REJECT  │
-│  quality/consistency flags  │
-│  → HUMAN_REVIEW             │
-└──────────┬──────────────────┘
-           │
-           ▼
-    IdentityValidationResponse
+```mermaid
+flowchart TD
+    IMG([Imagen recibida]) --> PRE
+
+    PRE["1. PREPROCESAMIENTO\nOpenCV"]
+    PRE --> PRE_INE{"Tipo?"}
+    PRE_INE -->|INE| A1["Detecta bordes\nCorrige perspectiva\nNormaliza 1000×630px"]
+    PRE_INE -->|INE_REVERSO| A2["Crop zona ID\n25–65% × 60–82%"]
+    PRE_INE -->|PASAPORTE\nLICENCIA| A3["Sin crop\nespecializado"]
+    A1 & A2 & A3 --> OCR
+
+    OCR["2. OCR\nClaude / GPT-4V / Ollama"]
+    OCR --> OCR_P{"Prompt por tipo"}
+    OCR_P -->|INE| O1["nombre, CURP\nid_number, vigencia"]
+    OCR_P -->|INE_REVERSO| O2["solo folio / CIC"]
+    OCR_P -->|PASAPORTE\nLICENCIA| O3["campos generales ID"]
+    O1 & O2 & O3 --> VIS
+
+    VIS{"3. VISION AI"}
+    VIS -->|INE · INE_REVERSO\nSKIP| VN["Resultado neutral\nscore = 1.0"]
+    VIS -->|PASAPORTE · LICENCIA| VA["Calidad de imagen\nCoincidencia de tipo\nquality_flags\nconsistency_flags"]
+    VN & VA --> RULES
+
+    RULES["4. RULES ENGINE\nin-process, sin IA"]
+    RULES --> R1["INE / PASAPORTE / LICENCIA\n✓ has_full_name\n✓ has_id_number\n✓ expiry_not_past"]
+    RULES --> R2["INE_REVERSO\n✓ has_id_number"]
+    R1 & R2 --> SCORE
+
+    SCORE["5. SCORING\nOCR 40% · Vision 20% · Rules 40%"]
+    SCORE --> DEC{final_score}
+    DEC -->|"> 95"| AA([AUTO_APPROVED])
+    DEC -->|"70 – 95"| HR([HUMAN_REVIEW])
+    DEC -->|"< 70"| AR([AUTO_REJECTED])
+    DEC -->|"expired_document flag"| AR
+    DEC -->|"quality / consistency flags"| HR
+
+    style AA fill:#22c55e,color:#fff
+    style HR fill:#f59e0b,color:#fff
+    style AR fill:#ef4444,color:#fff
 ```
 
 ### 4.3 Pipeline de recibos y comprobantes de domicilio
 
-```
-Imagen recibida
-      │
-      ▼
-┌─────────────────────────────┐
-│  1. PREPROCESAMIENTO        │
-│  (OpenCV)                   │
-│  • Sin crop especializado   │
-│  • Para ADDRESS_PROOF:      │
-│    crop región principal    │
-│    (2-46% x 0-48%)          │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  2. OCR                     │
-│                             │
-│  Prompt COMPROBANTE:        │
-│  "Extrae la dirección del   │
-│  CLIENTE titular, no la     │
-│  de la empresa emisora"     │
-│                             │
-│  Campos extraídos:          │
-│  issuer, street, colony,    │
-│  zip_code, city, state,     │
-│  issue_date                 │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  3. VISION AI               │
-│                             │
-│  ⚠️ SKIP para              │
-│  ADDRESS_PROOF y            │
-│  COMPROBANTE_DOMICILIO      │
-│  (solo OCR es suficiente)   │
-│                             │
-│  RECEIPT normal:            │
-│  • Autenticidad física      │
-│  • Signos de alteración     │
-│  → fraud_indicators         │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  4. RULES ENGINE            │
-│                             │
-│  ADDRESS_PROOF:             │
-│  ✓ has_issue_date           │
-│  ✓ has_issuer               │
-│  ✓ has_street               │
-│  ✓ has_colony               │
-│  ✓ has_zip_code             │
-│  ✓ has_city                 │
-│  ✓ has_state                │
-│  ✓ antigüedad ≤ 3 meses     │
-│                             │
-│  RECEIPT:                   │
-│  ✓ has_date                 │
-│  ✓ has_total                │
-│  ✓ has_issuer               │
-│  ✓ has_receipt_number       │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  5. SCORING                 │
-│                             │
-│  Pesos RECEIPT:             │
-│  OCR   25% × confidence     │
-│  Vision 40% × auth_score    │
-│  Rules 35% × rules_score    │
-│                             │
-│  Checks adicionales:        │
-│  issue_date > 3 meses       │
-│  → is_expired = true        │
-│  → AUTO_REJECTED            │
-└──────────┬──────────────────┘
-           │
-           ▼
-    ReceiptValidationResponse
+```mermaid
+flowchart TD
+    IMG([Imagen recibida]) --> PRE
+
+    PRE{"1. PREPROCESAMIENTO\nOpenCV"}
+    PRE -->|ADDRESS_PROOF| PC["Crop región principal\n2–46% × 0–48%"]
+    PRE -->|RECEIPT| PS["Sin crop\nespecializado"]
+    PC & PS --> OCR
+
+    OCR["2. OCR\nClaude / GPT-4V / Ollama"]
+    OCR --> OCP{"Prompt por tipo"}
+    OCP -->|"COMPROBANTE\nADDRESS_PROOF"| OC1["Dirección del CLIENTE\nno la de la empresa emisora\nissuer · street · colony\nzip_code · city · state · issue_date"]
+    OCP -->|RECEIPT| OC2["date · total · issuer\nreceipt_number"]
+    OC1 & OC2 --> VIS
+
+    VIS{"3. VISION AI"}
+    VIS -->|"ADDRESS_PROOF\nCOMPROBANTE_DOMICILIO\nSKIP"| VN["Resultado neutral\nscore = 1.0"]
+    VIS -->|RECEIPT| VA["Autenticidad física\nSignos de alteración\nfraud_indicators"]
+    VN & VA --> RULES
+
+    RULES["4. RULES ENGINE\nin-process, sin IA"]
+    RULES --> RA["ADDRESS_PROOF\n✓ has_issue_date\n✓ has_issuer · has_street\n✓ has_colony · has_zip_code\n✓ has_city · has_state\n✓ antigüedad ≤ 3 meses"]
+    RULES --> RR["RECEIPT\n✓ has_date · has_total\n✓ has_issuer\n✓ has_receipt_number"]
+    RA & RR --> SCORE
+
+    SCORE["5. SCORING\nOCR 25% · Vision 40% · Rules 35%"]
+    SCORE --> DEC{final_score}
+    DEC -->|"> 95"| AA([AUTO_APPROVED])
+    DEC -->|"70 – 95"| HR([HUMAN_REVIEW])
+    DEC -->|"< 70"| AR([AUTO_REJECTED])
+    DEC -->|"issue_date > 3 meses"| AR
+
+    style AA fill:#22c55e,color:#fff
+    style HR fill:#f59e0b,color:#fff
+    style AR fill:#ef4444,color:#fff
 ```
 
 ### 4.4 Scoring: ejemplo numérico KYC real
@@ -724,22 +645,30 @@ CORS_ALLOWED_ORIGINS=http://localhost,http://mi-frontend.com
 
 ## 9. Infraestructura de despliegue
 
-```
-Internet / LAN
-      │
-      ▼
-   nginx :80
-      │  proxy_pass
-      ▼
-  uvicorn :8000 (127.0.0.1)
-  systemd service: ai-gateway
-      │
-      ▼
-  AI Gateway (FastAPI)
-      │
-      ├──► Anthropic API (cloud)
-      ├──► OpenAI API (cloud)
-      └──► Ollama (local :11434)
+```mermaid
+flowchart TD
+    INT([Internet / LAN]) --> NGX
+
+    subgraph VM[Ubuntu Server]
+        NGX["nginx :80\nreverse proxy"]
+        UVI["uvicorn :8000\n127.0.0.1\nsystemd: ai-gateway"]
+        OLL["Ollama :11434\nmodelos locales"]
+        NGX -->|proxy_pass| UVI
+        UVI -.->|opcional| OLL
+    end
+
+    subgraph Cloud[Providers cloud]
+        ANT[Anthropic API\nclaude-sonnet-4-6]
+        OAI[OpenAI API\ngpt-4.1-mini]
+    end
+
+    UVI -->|ANTHROPIC_API_KEY| ANT
+    UVI -->|OPENAI_API_KEY| OAI
+
+    subgraph CI[GitHub Actions]
+        RUN[Self-hosted Runner\nen la misma VM]
+        RUN -->|"poetry install\nruff · pytest\nsystemctl restart"| UVI
+    end
 ```
 
 **GitHub Actions CI/CD** (self-hosted runner en la misma VM):
