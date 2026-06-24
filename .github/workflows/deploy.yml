@@ -21,5 +21,10 @@ jobs:
       - name: Run tests
         run: poetry run pytest --cov=app --cov-report=term-missing -q
 
+      - name: Deploy to service directory
+        run: |
+          cd /home/administrador/ai-gateway
+          git pull origin main
+
       - name: Restart service
         run: sudo -n systemctl restart ai-gateway
