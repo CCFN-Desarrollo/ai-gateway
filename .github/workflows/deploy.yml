@@ -24,7 +24,8 @@ jobs:
       - name: Deploy to service directory
         run: |
           cd /home/administrador/ai-gateway
-          git pull origin main
+          git fetch origin main
+          git reset --hard origin/main
 
       - name: Restart service
         run: sudo -n systemctl restart ai-gateway
