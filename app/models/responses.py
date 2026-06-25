@@ -120,6 +120,27 @@ class IdentityValidationResponse(BaseValidationResponse):
     used_specialized_crop: bool = False
 
 
+class CsfExtractedData(BaseModel):
+    rfc: str | None = None
+    full_name: str | None = None
+    curp: str | None = None
+    zip_code: str | None = None
+    street: str | None = None
+    colony: str | None = None
+    city: str | None = None
+    state: str | None = None
+    start_date: str | None = None
+    last_change_date: str | None = None
+    fiscal_regimes: list[str] = Field(default_factory=list)
+    fiscal_obligations: list[str] = Field(default_factory=list)
+
+
+class CsfValidationResponse(BaseValidationResponse):
+    extracted_data: CsfExtractedData
+    pages_processed: int = 1
+    breakdown: dict = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Health response
 # ---------------------------------------------------------------------------

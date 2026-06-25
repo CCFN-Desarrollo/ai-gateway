@@ -78,6 +78,32 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 If the document shows a billing period, use the end date of that period as issue_date.
 Only include fields that are clearly visible."""
 
+_CSF_EXTRACT_PROMPT = """Esta es una página de una Constancia de Situación Fiscal (CSF) emitida por el SAT (Servicio de Administración Tributaria de México).
+
+Extrae todos los datos fiscales visibles en esta página.
+
+Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones) con esta estructura exacta:
+{
+  "raw_text": "<texto relevante visible en la página>",
+  "structured_fields": {
+    "rfc": "<RFC del contribuyente, 12 o 13 caracteres alfanuméricos>",
+    "full_name": "<nombre completo o razón social del contribuyente>",
+    "curp": "<CURP si está visible, 18 caracteres, solo personas físicas>",
+    "zip_code": "<código postal del domicilio fiscal, 5 dígitos>",
+    "street": "<tipo de vía, nombre de calle y número del domicilio fiscal>",
+    "colony": "<colonia o fraccionamiento del domicilio fiscal>",
+    "city": "<municipio o alcaldía del domicilio fiscal>",
+    "state": "<entidad federativa del domicilio fiscal>",
+    "start_date": "<fecha de inicio de operaciones en formato YYYY-MM-DD>",
+    "last_change_date": "<fecha de último cambio de situación en formato YYYY-MM-DD>",
+    "fiscal_regimes": ["<régimen fiscal 1>", "<régimen fiscal 2>"],
+    "fiscal_obligations": ["<descripción de obligación 1>", "<descripción de obligación 2>"]
+  },
+  "confidence": <float entre 0.0 y 1.0>
+}
+
+Notas: fiscal_regimes y fiscal_obligations son listas ([] si no hay). Solo incluye campos claramente visibles."""
+
 _VISION_PROMPT_TEMPLATE = """Analyze this {document_type} document image for authenticity and potential fraud.
 
 Examine:
@@ -140,7 +166,9 @@ class OpenAIOCRService:
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
-            if document_type == "ADDRESS_PROOF"
+            if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO")
+            else _CSF_EXTRACT_PROMPT
+            if document_type == "CSF"
             else _EXTRACT_PROMPT
         )
 

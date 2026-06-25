@@ -18,8 +18,10 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "anthropic"
     AI_PROVIDER_IDENTITY: str = ""
     AI_PROVIDER_RECEIPT: str = ""
+    AI_PROVIDER_CSF: str = ""
     OCR_PROVIDER_IDENTITY: str = ""
     OCR_PROVIDER_RECEIPT: str = ""
+    OCR_PROVIDER_CSF: str = ""
     VISION_PROVIDER_IDENTITY: str = ""
     VISION_PROVIDER_RECEIPT: str = ""
 
@@ -79,6 +81,7 @@ class Settings(BaseSettings):
         provider_by_pipeline = {
             "identity": self.AI_PROVIDER_IDENTITY,
             "receipt": self.AI_PROVIDER_RECEIPT,
+            "csf": self.AI_PROVIDER_CSF,
         }
         configured_provider = provider_by_pipeline.get(pipeline_name, "")
         provider = self._normalize_provider(configured_provider or self.AI_PROVIDER)
@@ -95,6 +98,7 @@ class Settings(BaseSettings):
             "ocr": {
                 "identity": self.OCR_PROVIDER_IDENTITY,
                 "receipt": self.OCR_PROVIDER_RECEIPT,
+                "csf": self.OCR_PROVIDER_CSF,
             },
             "vision": {
                 "identity": self.VISION_PROVIDER_IDENTITY,
@@ -122,8 +126,10 @@ class Settings(BaseSettings):
             ("AI_PROVIDER", self.AI_PROVIDER),
             ("AI_PROVIDER_IDENTITY", self.AI_PROVIDER_IDENTITY),
             ("AI_PROVIDER_RECEIPT", self.AI_PROVIDER_RECEIPT),
+            ("AI_PROVIDER_CSF", self.AI_PROVIDER_CSF),
             ("OCR_PROVIDER_IDENTITY", self.OCR_PROVIDER_IDENTITY),
             ("OCR_PROVIDER_RECEIPT", self.OCR_PROVIDER_RECEIPT),
+            ("OCR_PROVIDER_CSF", self.OCR_PROVIDER_CSF),
             ("VISION_PROVIDER_IDENTITY", self.VISION_PROVIDER_IDENTITY),
             ("VISION_PROVIDER_RECEIPT", self.VISION_PROVIDER_RECEIPT),
         ):
