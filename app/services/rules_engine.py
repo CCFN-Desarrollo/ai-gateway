@@ -85,6 +85,14 @@ def _parse_date(value: str) -> datetime | None:
     """Attempt to parse a date string using multiple formats."""
     value = str(value).strip()
 
+    # Single year ("2026") or year range ("2026-2030") → Dec 31 of the last year.
+    if len(value) == 4 and value.isdigit():
+        return datetime(int(value), 12, 31)
+    if len(value) == 9 and value[4] == "-":
+        start_str, end_str = value.split("-", maxsplit=1)
+        if start_str.isdigit() and end_str.isdigit():
+            return datetime(int(end_str), 12, 31)
+
     # Normalize common month/year expiry formats to the last day of that month.
     if len(value) == 7 and value[4] in {"-", "/"}:
         year_str, month_str = value.split(value[4], maxsplit=1)
@@ -298,10 +306,18 @@ class RulesEngine:
         return "unknown"
 
     def get_expiry_date_str(self, fields: dict) -> str | None:
-        """Return the raw expiry date string if found, else None."""
+        """Return the expiry date string if found, else None.
+
+        Year ranges like "2026-2036" are normalized to the end year ("2036").
+        """
         for key in _EXPIRY_KEYS:
             if key in fields and fields[key]:
-                return str(fields[key])
+                value = str(fields[key]).strip()
+                if len(value) == 9 and value[4] == "-":
+                    start_str, end_str = value.split("-", maxsplit=1)
+                    if start_str.isdigit() and end_str.isdigit():
+                        return end_str
+                return value
         return None
 
     @staticmethod

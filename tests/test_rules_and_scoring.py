@@ -11,6 +11,27 @@ def test_parse_month_year_expiry_format():
     assert parsed.day == 31
 
 
+def test_parse_single_year_expiry():
+    parsed = _parse_date("2026")
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.month == 12
+    assert parsed.day == 31
+
+
+def test_parse_year_range_expiry_uses_end_year():
+    parsed = _parse_date("2026-2030")
+    assert parsed is not None
+    assert parsed.year == 2030
+    assert parsed.month == 12
+    assert parsed.day == 31
+
+
+def test_expiry_date_str_normalizes_year_range_to_end_year():
+    assert rules_engine.get_expiry_date_str({"expiry_date": "2026-2036"}) == "2036"
+    assert rules_engine.get_expiry_date_str({"expiry_date": "2026"}) == "2026"
+
+
 def test_unknown_expiry_is_flagged_without_failing_rule():
     result = rules_engine.validate_identity(
         OCRResult(
