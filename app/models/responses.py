@@ -30,6 +30,17 @@ class OCRResult(BaseModel):
     confidence: float  # 0.0 – 1.0
 
 
+class DocumentTypeClassification(BaseModel):
+    """Result from identity document type classification (image text only)."""
+
+    document_type: str | None = None
+    confidence: float = 0.0  # 0.0 – 1.0
+    evidence: list[str] = Field(default_factory=list)
+    english_text_found: list[str] = Field(default_factory=list)
+    spanish_text_found: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
 class VisionResult(BaseModel):
     """Result from the Vision AI service."""
 

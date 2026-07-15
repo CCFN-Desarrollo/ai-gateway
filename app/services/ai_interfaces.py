@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from app.models.responses import OCRResult, VisionResult
+from app.models.responses import DocumentTypeClassification, OCRResult, VisionResult
 
 
 class OCRProvider(Protocol):
@@ -10,6 +10,12 @@ class OCRProvider(Protocol):
         media_type: str = "image/jpeg",
         document_type: str | None = None,
     ) -> OCRResult: ...
+
+    async def classify_document(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/jpeg",
+    ) -> DocumentTypeClassification: ...
 
 
 class VisionProvider(Protocol):

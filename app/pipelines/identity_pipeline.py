@@ -3,10 +3,16 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.core.errors import UpstreamServiceError
-from app.models.responses import IdentityExtractedData, IdentityValidationResponse, VisionResult
+from app.core.errors import ProviderResponseError, UpstreamServiceError
+from app.models.responses import (
+    DocumentTypeClassification,
+    IdentityExtractedData,
+    IdentityValidationResponse,
+    VisionResult,
+)
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
+from app.services.document_classifier import resolve_document_type
 from app.services.document_preprocessor import document_preprocessor
 from app.services.ocr_service import identity_ocr_service
 from app.services.rules_engine import _parse_date, rules_engine
@@ -41,6 +47,24 @@ class IdentityPipeline(BasePipeline):
         self.vision_service = vision
         self.scoring_service = scoring
 
+    async def process_with_auto_detect(
+        self,
+        image_bytes: bytes,
+        media_type: str,
+        metadata: dict,
+    ) -> IdentityValidationResponse:
+        """
+        Alternate entrypoint when the caller omits document_type.
+
+        Classification + bilingual cue resolution happen inside process() on the
+        full uncropped image before any INE-specific crop.
+        """
+        return await self.process(
+            image_bytes=image_bytes,
+            media_type=media_type,
+            metadata=metadata,
+        )
+
     async def process(
         self,
         image_bytes: bytes,
@@ -48,25 +72,47 @@ class IdentityPipeline(BasePipeline):
         metadata: dict,
     ) -> IdentityValidationResponse:
         """
-        Run OCR → Vision → Rules → Scoring for an identity document image.
+        Run Classify → OCR → Vision → Rules → Scoring for an identity document image.
+
+        Classification always runs on the full uncropped image first so INE-only crops
+        are never applied to English visa/BCC documents.
 
         Args:
             image_bytes: Raw bytes of the identity document image.
             media_type:  MIME type of the image.
-            metadata:    Must contain 'client_id' and 'document_type'.
+            metadata:    Must contain 'client_id'. Optional 'document_type' hint.
 
         Returns:
             IdentityValidationResponse with all validation data.
         """
         request_id = uuid4()
-        document_type = metadata.get("document_type", "IDENTITY")
+        hinted_type = metadata.get("document_type")
         start = self._start_timer()
 
         logger.info(
-            "Starting identity pipeline | request_id=%s client_id=%s document_type=%s",
+            "Starting identity pipeline | request_id=%s client_id=%s hinted_document_type=%s",
             request_id,
             metadata.get("client_id"),
+            hinted_type,
+        )
+
+        # Classify on the FULL image before any type-specific crop.
+        classification = await self._classify_document(image_bytes, media_type)
+        document_type, type_consistency_flags = resolve_document_type(classification, hinted_type)
+        if document_type is None:
+            raise ProviderResponseError(
+                "Could not determine identity document_type from image content or request hint."
+            )
+        logger.info(
+            "Document type resolved before crop | request_id=%s document_type=%s "
+            "classified=%s confidence=%.2f english=%s spanish=%s flags=%s",
+            request_id,
             document_type,
+            classification.document_type if classification else None,
+            classification.confidence if classification else 0.0,
+            classification.english_text_found if classification else [],
+            classification.spanish_text_found if classification else [],
+            type_consistency_flags,
         )
 
         preprocessed = document_preprocessor.preprocess_identity_document(
@@ -194,10 +240,24 @@ class IdentityPipeline(BasePipeline):
             extracted_data=extracted,
             is_expired=is_expired,
             quality_flags=[*preprocessed.quality_flags, *vision_result.quality_flags],
-            consistency_flags=vision_result.consistency_flags,
+            consistency_flags=[*type_consistency_flags, *vision_result.consistency_flags],
             breakdown=scoring_result.breakdown,
             used_specialized_crop=preprocessed.used_specialized_crop,
         )
+
+    async def _classify_document(
+        self,
+        image_bytes: bytes,
+        media_type: str,
+    ) -> DocumentTypeClassification | None:
+        try:
+            return await self.ocr_service.classify_document(image_bytes, media_type)
+        except (UpstreamServiceError, ProviderResponseError) as exc:
+            logger.warning(
+                "Document type classification failed; continuing with request hint only: %s",
+                exc,
+            )
+            return None
 
     @staticmethod
     def _compute_is_expired(expiry_date_str: str | None) -> bool:

@@ -6,7 +6,11 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
-from app.models.responses import OCRResult, VisionResult
+from app.models.responses import DocumentTypeClassification, OCRResult, VisionResult
+from app.services.document_classifier import (
+    CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
+    parse_classification_payload,
+)
 from app.services.provider_common import normalize_media_type, parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -134,6 +138,10 @@ Assess:
 - whether there are obvious capture issues such as blur, glare, crop, low contrast, or partial framing
 - whether there are basic inconsistencies between the visible document and the expected type
 
+Type-matching guidance:
+- If expected type is PASAPORTE: U.S. passports, U.S. visas, and Border Crossing Cards (B1/B2 VISA / BCC) issued by the United States Department of State MATCH. English headers such as "UNITED STATES OF AMERICA" are expected. Holder nationality MEXICAN is not a mismatch and does NOT mean the document is an INE.
+- If expected type is INE: require Mexican voter-ID branding (Instituto Nacional Electoral / Credencial para Votar). A U.S. visa or BCC is not an INE.
+
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
 {{
   "document_matches_expected_type": <true or false>,
@@ -184,6 +192,30 @@ class OpenAIOCRService:
             structured_fields=data.get("structured_fields", {}),
             confidence=float(data.get("confidence", 0.5)),
         )
+
+    async def classify_document(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/jpeg",
+    ) -> DocumentTypeClassification:
+        """Alternate flow: infer document_type from image content only (ignore filenames)."""
+        validated_media_type = normalize_media_type(media_type)
+        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+        logger.debug(
+            "Sending image to OpenAI for document type classification (size=%d bytes)",
+            len(image_bytes),
+        )
+        response = await self._request(
+            CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
+            image_b64,
+            validated_media_type,
+            "Classify",
+        )
+        raw_response = self._extract_text_block(
+            response, "Classify provider returned an unexpected response shape."
+        )
+        data = parse_json_response(raw_response, "Classify provider returned invalid JSON.")
+        return parse_classification_payload(data)
 
     async def _request(
         self,

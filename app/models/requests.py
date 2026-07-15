@@ -31,7 +31,7 @@ class ReceiptValidationRequest(BaseModel):
 
 class IdentityValidationRequest(BaseModel):
     client_id: str
-    document_type: DocumentType
+    document_type: DocumentType | None = None
 
 
 class ValidationCaseStatus(str, Enum):
