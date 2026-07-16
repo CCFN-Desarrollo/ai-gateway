@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.core.errors import ProviderResponseError, UpstreamServiceError
 from app.models.responses import (
     Decision,
+    DocumentTypeClassification,
     IdentityExtractedData,
     IdentityValidationResponse,
     OCRResult,
@@ -144,6 +145,43 @@ def _upload_file(dummy_png: bytes) -> dict:
     return {"file": ("ine.png", io.BytesIO(dummy_png), "image/png")}
 
 
+def _classification_for(document_type: str) -> DocumentTypeClassification:
+    if document_type == "PASAPORTE":
+        return DocumentTypeClassification(
+            document_type="PASAPORTE",
+            confidence=0.95,
+            english_text_found=["UNITED STATES OF AMERICA", "B1/B2 VISA / BORDER CROSSING CARD"],
+            spanish_text_found=[],
+            evidence=["UNITED STATES OF AMERICA"],
+            notes="mocked US travel document",
+        )
+    if document_type == "INE_REVERSO":
+        return DocumentTypeClassification(
+            document_type="INE_REVERSO",
+            confidence=0.95,
+            english_text_found=[],
+            spanish_text_found=[],
+            evidence=["IDMEX"],
+            notes="mocked INE reverso",
+        )
+    return DocumentTypeClassification(
+        document_type="INE",
+        confidence=0.95,
+        english_text_found=[],
+        spanish_text_found=["Instituto Nacional Electoral", "Credencial para Votar"],
+        evidence=["Instituto Nacional Electoral"],
+        notes="mocked INE",
+    )
+
+
+def _classify_patch(document_type: str = "INE"):
+    return patch(
+        "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.classify_document",
+        new_callable=AsyncMock,
+        return_value=_classification_for(document_type),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -215,6 +253,7 @@ class TestIdentityValidationSuccess:
         scoring_approved_result: ScoringResult,
     ):
         with (
+            _classify_patch("INE"),
             patch(
                 "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
                 return_value=type(
@@ -276,6 +315,7 @@ class TestIdentityValidationSuccess:
         scoring_rejected_result: ScoringResult,
     ):
         with (
+            _classify_patch("INE"),
             patch(
                 "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
                 return_value=type(
@@ -335,6 +375,7 @@ class TestIdentityValidationSuccess:
         cropped_bytes = b"cropped-image"
 
         with (
+            _classify_patch("INE_REVERSO"),
             patch(
                 "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
                 return_value=type(
@@ -394,6 +435,7 @@ class TestIdentityValidationSuccess:
         scoring_approved_result: ScoringResult,
     ):
         with (
+            _classify_patch("INE_REVERSO"),
             patch(
                 "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
                 return_value=type(
@@ -453,6 +495,7 @@ class TestIdentityValidationSuccess:
             rules_score=1.0,
         )
         with (
+            _classify_patch("INE_REVERSO"),
             patch(
                 "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
                 new_callable=AsyncMock,
@@ -497,6 +540,7 @@ class TestIdentityValidationSuccess:
         scoring_approved_result: ScoringResult,
     ):
         with (
+            _classify_patch("PASAPORTE"),
             patch(
                 "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
                 new_callable=AsyncMock,
@@ -526,13 +570,124 @@ class TestIdentityValidationSuccess:
         assert resp.status_code == 200
         assert resp.json()["document_type"] == "PASAPORTE"
 
+    def test_auto_detect_alternate_flow_without_document_type(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_ine_result: OCRResult,
+        vision_authentic_result: VisionResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        """Omit document_type → classify from image on full bytes before any crop."""
+        with (
+            _classify_patch("INE") as classify_mock,
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_ine_result,
+            ) as ocr_mock,
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.rules_engine.validate_identity",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/identity",
+                headers=api_headers,
+                data={"client_id": "client-auto"},
+                files={"file": ("random_upload_9f3a.jpg", io.BytesIO(dummy_png), "image/png")},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["document_type"] == "INE"
+        classify_mock.assert_awaited_once()
+        # Filename must not be part of classify args — only image bytes + media type.
+        assert classify_mock.await_args.args[0] == dummy_png
+        assert "random_upload" not in str(classify_mock.await_args)
+        ocr_mock.assert_awaited_once()
+        assert ocr_mock.await_args.kwargs.get("document_type") == "INE"
+
+    def test_us_bcc_english_cues_skip_ine_crop(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_ine_result: OCRResult,
+        vision_authentic_result: VisionResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        """English visa/BCC text must resolve to PASAPORTE before INE crop runs."""
+        with (
+            _classify_patch("PASAPORTE") as classify_mock,
+            patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": dummy_png,
+                        "quality_flags": [],
+                        "used_specialized_crop": False,
+                        "debug_image_path": None,
+                    },
+                )(),
+            ) as preprocess_mock,
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_ine_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.rules_engine.validate_identity",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/identity",
+                headers=api_headers,
+                data={"client_id": "client-bcc", "document_type": "INE"},
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["document_type"] == "PASAPORTE"
+        assert resp.json()["used_specialized_crop"] is False
+        classify_mock.assert_awaited_once()
+        assert classify_mock.await_args.args[0] == dummy_png
+        preprocess_mock.assert_called_once()
+        assert preprocess_mock.call_args.kwargs["document_type"] == "PASAPORTE"
+
     def test_provider_response_error_returns_502(
         self, client: TestClient, api_headers: dict, dummy_png: bytes
     ):
-        with patch(
-            "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
-            new_callable=AsyncMock,
-            side_effect=ProviderResponseError("bad json"),
+        with (
+            _classify_patch("INE"),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                side_effect=ProviderResponseError("bad json"),
+            ),
         ):
             resp = client.post(
                 "/api/v1/validate/identity",
@@ -546,10 +701,13 @@ class TestIdentityValidationSuccess:
     def test_upstream_error_returns_503(
         self, client: TestClient, api_headers: dict, dummy_png: bytes
     ):
-        with patch(
-            "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
-            new_callable=AsyncMock,
-            side_effect=UpstreamServiceError("timeout"),
+        with (
+            _classify_patch("INE"),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                side_effect=UpstreamServiceError("timeout"),
+            ),
         ):
             resp = client.post(
                 "/api/v1/validate/identity",

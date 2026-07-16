@@ -6,7 +6,11 @@ import httpx
 
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
-from app.models.responses import OCRResult, VisionResult
+from app.models.responses import DocumentTypeClassification, OCRResult, VisionResult
+from app.services.document_classifier import (
+    CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
+    parse_classification_payload,
+)
 from app.services.provider_common import parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -112,6 +116,10 @@ Assess:
 - whether there are obvious capture issues such as blur, glare, crop, low contrast, or partial framing
 - whether there are basic inconsistencies between the visible document and the expected type
 
+Type-matching guidance:
+- If expected type is PASAPORTE: U.S. passports, U.S. visas, and Border Crossing Cards (B1/B2 VISA / BCC) issued by the United States Department of State MATCH. English headers such as "UNITED STATES OF AMERICA" are expected. Holder nationality MEXICAN is not a mismatch and does NOT mean the document is an INE.
+- If expected type is INE: require Mexican voter-ID branding (Instituto Nacional Electoral / Credencial para Votar). A U.S. visa or BCC is not an INE.
+
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
 {{
   "document_matches_expected_type": <true or false>,
@@ -152,14 +160,33 @@ class OllamaOCRService:
 
         logger.debug("Sending image to Ollama for OCR extraction (size=%d bytes)", len(image_bytes))
 
-        data = await self._request(prompt, image_b64)
+        data = await self._request(prompt, image_b64, operation_name="OCR")
         return OCRResult(
             raw_text=str(data.get("raw_text", "")),
             structured_fields=data.get("structured_fields", {}),
             confidence=float(data.get("confidence", 0.5)),
         )
 
-    async def _request(self, prompt: str, image_b64: str) -> dict:
+    async def classify_document(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/jpeg",
+    ) -> DocumentTypeClassification:
+        """Alternate flow: infer document_type from image content only (ignore filenames)."""
+        del media_type
+        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+        logger.debug(
+            "Sending image to Ollama for document type classification (size=%d bytes)",
+            len(image_bytes),
+        )
+        data = await self._request(
+            CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
+            image_b64,
+            operation_name="Classify",
+        )
+        return parse_classification_payload(data)
+
+    async def _request(self, prompt: str, image_b64: str, operation_name: str = "OCR") -> dict:
         payload = {
             "model": self.settings.OLLAMA_MODEL,
             "prompt": prompt,
@@ -172,7 +199,7 @@ class OllamaOCRService:
             payload=payload,
             timeout_seconds=self.settings.OLLAMA_TIMEOUT_SECONDS,
             max_retries=self.settings.OLLAMA_MAX_RETRIES,
-            operation_name="OCR",
+            operation_name=operation_name,
         )
 
 

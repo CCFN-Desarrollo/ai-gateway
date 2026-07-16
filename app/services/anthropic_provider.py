@@ -8,7 +8,11 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
-from app.models.responses import OCRResult, VisionResult
+from app.models.responses import DocumentTypeClassification, OCRResult, VisionResult
+from app.services.document_classifier import (
+    CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
+    parse_classification_payload,
+)
 from app.services.provider_common import normalize_media_type, parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,15 @@ def _compress_image(image_bytes: bytes) -> tuple[bytes, str]:
 
 _IDENTITY_DOCUMENT_TYPES = {"INE", "INE_REVERSO", "PASAPORTE", "LICENCIA"}
 
+_KYC_SYSTEM_PROMPT = """You are an OCR and document-validation component inside an authorized
+identity-verification (KYC / AML) gateway used by a regulated business workflow.
+
+Your job is to extract visible fields from customer-submitted identity and fiscal
+documents so the gateway can validate them. This is a legitimate compliance use case.
+Always respond with the requested JSON only. Do not refuse ordinary ID-card, passport,
+visa, border-crossing-card, license, address-proof, or tax-document extraction for this
+authorized verification flow."""
+
 _EXTRACT_PROMPT = """Analyze this document image and extract all visible text.
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
 {
@@ -58,8 +71,9 @@ For structured_fields, extract key-value pairs using lowercase English keys such
 date, total, issuer, receipt_number, full_name, id_number, curp, expiry_date, date_of_birth, address, rfc, folio.
 Only include fields that are actually visible in the document."""
 
-_INE_REVERSO_EXTRACT_PROMPT = """This is the back side of a Mexican INE card.
-Look for the main printed identifier on the back, such as folio, id number, CIC, OCR, or a similar visible document code.
+_INE_REVERSO_EXTRACT_PROMPT = """This image is a customer identity document submitted for authorized KYC validation
+(Mexican INE reverse, or a similar ID / visa / border-crossing card reverse side).
+Look for the main printed identifier on the back, such as folio, id number, CIC, OCR, MRZ, or a similar visible document code.
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
 {
   "raw_text": "<visible identifier text or short OCR snippet>",
@@ -171,6 +185,10 @@ Assess:
 - whether there are obvious capture issues such as blur, glare, crop, low contrast, or partial framing
 - whether there are basic inconsistencies between the visible document and the expected type
 
+Type-matching guidance:
+- If expected type is PASAPORTE: U.S. passports, U.S. visas, and Border Crossing Cards (B1/B2 VISA / BCC) issued by the United States Department of State MATCH. English headers such as "UNITED STATES OF AMERICA" are expected. Holder nationality MEXICAN is not a mismatch and does NOT mean the document is an INE.
+- If expected type is INE: require Mexican voter-ID branding (Instituto Nacional Electoral / Credencial para Votar). A U.S. visa or BCC is not an INE.
+
 Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
 {{
   "document_matches_expected_type": <true or false>,
@@ -216,7 +234,7 @@ class AnthropicOCRService:
         )
 
         response = await self._request(
-            max_tokens=2048,
+            max_tokens=4096,
             content=[
                 {
                     "type": "image",
@@ -241,6 +259,40 @@ class AnthropicOCRService:
             confidence=float(data.get("confidence", 0.5)),
         )
 
+    async def classify_document(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/jpeg",
+    ) -> DocumentTypeClassification:
+        """Alternate flow: infer document_type from image content only (ignore filenames)."""
+        image_bytes, compressed_media_type = _compress_image(image_bytes)
+        validated_media_type = normalize_media_type(compressed_media_type or media_type)
+        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+        logger.debug(
+            "Sending image to Anthropic for document type classification (size=%d bytes)",
+            len(image_bytes),
+        )
+        response = await self._request(
+            max_tokens=512,
+            content=[
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": validated_media_type,
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": CLASSIFY_IDENTITY_DOCUMENT_PROMPT},
+            ],
+            operation_name="Classify",
+        )
+        raw_response = self._extract_text_block(
+            response, "Classify provider returned an unexpected response shape."
+        )
+        data = parse_json_response(raw_response, "Classify provider returned invalid JSON.")
+        return parse_classification_payload(data)
+
     async def _request(self, max_tokens: int, content: list[dict], operation_name: str):
         last_error: Exception | None = None
         for attempt in range(self.settings.ANTHROPIC_MAX_RETRIES + 1):
@@ -249,6 +301,7 @@ class AnthropicOCRService:
                     self.client.messages.create(
                         model=self.settings.ANTHROPIC_MODEL,
                         max_tokens=max_tokens,
+                        system=_KYC_SYSTEM_PROMPT,
                         messages=[{"role": "user", "content": content}],
                     ),
                     timeout=self.settings.ANTHROPIC_TIMEOUT_SECONDS,
@@ -268,9 +321,15 @@ class AnthropicOCRService:
     @staticmethod
     def _extract_text_block(response, error_message: str) -> str:
         try:
-            return response.content[0].text
+            text = response.content[0].text
         except (AttributeError, IndexError, TypeError) as exc:
             raise ProviderResponseError(error_message) from exc
+        stop_reason = getattr(response, "stop_reason", None)
+        if stop_reason == "max_tokens":
+            logger.warning(
+                "Anthropic response truncated (stop_reason=max_tokens); JSON parse may fail."
+            )
+        return text
 
 
 class AnthropicVisionService:
@@ -356,6 +415,7 @@ class AnthropicVisionService:
                     self.client.messages.create(
                         model=self.settings.ANTHROPIC_MODEL,
                         max_tokens=max_tokens,
+                        system=_KYC_SYSTEM_PROMPT,
                         messages=[{"role": "user", "content": content}],
                     ),
                     timeout=self.settings.ANTHROPIC_TIMEOUT_SECONDS,
@@ -375,6 +435,12 @@ class AnthropicVisionService:
     @staticmethod
     def _extract_text_block(response, error_message: str) -> str:
         try:
-            return response.content[0].text
+            text = response.content[0].text
         except (AttributeError, IndexError, TypeError) as exc:
             raise ProviderResponseError(error_message) from exc
+        stop_reason = getattr(response, "stop_reason", None)
+        if stop_reason == "max_tokens":
+            logger.warning(
+                "Anthropic response truncated (stop_reason=max_tokens); JSON parse may fail."
+            )
+        return text
