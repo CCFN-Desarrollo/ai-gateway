@@ -29,3 +29,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Validation case data (documents with personal information)
+data/validation_cases/

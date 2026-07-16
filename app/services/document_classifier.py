@@ -233,9 +233,7 @@ def resolve_document_type(
         return classified, flags
 
     if hinted:
-        if classified and classified != hinted:
-            flags.append("document_type_uncertain")
-        elif classification is not None and (
+        if classified and classified != hinted or classification is not None and (
             classified is None or classification.confidence < CLASSIFY_CONFIDENCE_THRESHOLD
         ):
             flags.append("document_type_uncertain")
