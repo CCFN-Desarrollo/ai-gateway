@@ -1,6 +1,8 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +12,23 @@ from app.core.config import settings
 
 
 def _configure_logging() -> None:
-    logging.basicConfig(
-        level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        stream=sys.stdout,
-    )
+    level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    fmt = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+
+    if settings.LOG_FILE:
+        log_path = Path(settings.LOG_FILE)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            filename=log_path,
+            when="midnight",
+            backupCount=settings.LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(logging.Formatter(fmt))
+        handlers.append(file_handler)
+
+    logging.basicConfig(level=level, format=fmt, handlers=handlers)
 
 
 @asynccontextmanager

@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     # Max file size in MB
     MAX_FILE_SIZE_MB: int = 10
     PREPROCESS_DEBUG_DIR: str = ""
+    LOG_FILE: str = ""
+    LOG_BACKUP_COUNT: int = 30
     VALIDATION_CASES_DIR: str = "data/validation_cases"
     CRM_ENABLED: bool = False
     CRM_BASE_URL: str = ""
