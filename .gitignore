@@ -32,3 +32,6 @@ dist/
 
 # Validation case data (documents with personal information)
 data/validation_cases/
+
+# Runtime logs
+logs/
