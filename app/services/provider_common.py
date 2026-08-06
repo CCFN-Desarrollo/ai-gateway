@@ -44,6 +44,29 @@ def normalize_media_type(media_type: str) -> str:
     return "image/jpeg"
 
 
+def sniff_image_media_type(image_bytes: bytes) -> str | None:
+    """Detect image MIME type from magic bytes; ignore declared Content-Type."""
+    if len(image_bytes) >= 3 and image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if len(image_bytes) >= 8 and image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if (
+        len(image_bytes) >= 12
+        and image_bytes[:4] == b"RIFF"
+        and image_bytes[8:12] == b"WEBP"
+    ):
+        return "image/webp"
+    return None
+
+
+def resolve_image_media_type(image_bytes: bytes, declared_media_type: str | None = None) -> str:
+    """Prefer bytes sniffing over the upload/declared MIME type."""
+    sniffed = sniff_image_media_type(image_bytes)
+    if sniffed:
+        return sniffed
+    return normalize_media_type(declared_media_type or "image/jpeg")
+
+
 def parse_json_response(text: str, error_message: str) -> dict:
     """Parse a provider JSON object, tolerating markdown fences and surrounding prose."""
     text = (text or "").strip()

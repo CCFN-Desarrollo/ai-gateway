@@ -17,6 +17,7 @@ from app.models.responses import (
     ScoringResult,
     VisionResult,
 )
+from app.pipelines.identity_pipeline import IdentityPipeline
 
 # ---------------------------------------------------------------------------
 # Fixtures — mock service responses
@@ -264,6 +265,7 @@ class TestIdentityValidationSuccess:
                         "quality_flags": [],
                         "used_specialized_crop": False,
                         "debug_image_path": None,
+                        "media_type": None,
                     },
                 )(),
             ),
@@ -300,6 +302,8 @@ class TestIdentityValidationSuccess:
         assert body["document_type"] == "INE"
         assert body["is_expired"] is False
         assert body["extracted_data"]["full_name"] == "JUAN PEREZ GARCIA"
+        assert body["extracted_data"]["first_name"] == "JUAN"
+        assert body["extracted_data"]["last_name"] == "PEREZ GARCIA"
         assert body["extracted_data"]["curp"] == "PEGJ900101HDFRZN01"
         assert body["quality_flags"] == []
         assert body["consistency_flags"] == []
@@ -326,6 +330,7 @@ class TestIdentityValidationSuccess:
                         "quality_flags": [],
                         "used_specialized_crop": False,
                         "debug_image_path": None,
+                        "media_type": None,
                     },
                 )(),
             ),
@@ -386,6 +391,7 @@ class TestIdentityValidationSuccess:
                         "quality_flags": [],
                         "used_specialized_crop": True,
                         "debug_image_path": None,
+                        "media_type": "image/jpeg",
                     },
                 )(),
             ),
@@ -418,7 +424,7 @@ class TestIdentityValidationSuccess:
         assert resp.status_code == 200
         ocr_mock.assert_awaited_once_with(
             cropped_bytes,
-            "image/png",
+            "image/jpeg",
             document_type="INE_REVERSO",
         )
         body = resp.json()
@@ -446,6 +452,7 @@ class TestIdentityValidationSuccess:
                         "quality_flags": ["document_alignment_failed"],
                         "used_specialized_crop": False,
                         "debug_image_path": None,
+                        "media_type": None,
                     },
                 )(),
             ),
@@ -527,6 +534,8 @@ class TestIdentityValidationSuccess:
         assert body["document_type"] == "INE_REVERSO"
         assert body["extracted_data"]["id_number"] == "PRGAJN90010100H600"
         assert body["extracted_data"]["full_name"] is None
+        assert body["extracted_data"]["first_name"] is None
+        assert body["extracted_data"]["last_name"] is None
         assert body["extracted_data"]["expiry_date"] is None
 
     def test_pasaporte_document_type(
@@ -641,6 +650,7 @@ class TestIdentityValidationSuccess:
                         "quality_flags": [],
                         "used_specialized_crop": False,
                         "debug_image_path": None,
+                        "media_type": None,
                     },
                 )(),
             ) as preprocess_mock,
@@ -717,3 +727,28 @@ class TestIdentityValidationSuccess:
             )
 
         assert resp.status_code == 503
+
+
+class TestSplitFullName:
+    def test_two_tokens(self):
+        assert IdentityPipeline._split_full_name("Juan Perez") == ("Juan", "Perez")
+
+    def test_three_tokens_single_given_name(self):
+        assert IdentityPipeline._split_full_name("Carlos Perez Garcia") == (
+            "Carlos",
+            "Perez Garcia",
+        )
+
+    def test_four_tokens_compound_given_name(self):
+        assert IdentityPipeline._split_full_name("Eder Manuel Barradas Acosta") == (
+            "Eder Manuel",
+            "Barradas Acosta",
+        )
+
+    def test_single_token(self):
+        assert IdentityPipeline._split_full_name("Madonna") == ("Madonna", None)
+
+    def test_empty(self):
+        assert IdentityPipeline._split_full_name(None) == (None, None)
+        assert IdentityPipeline._split_full_name("") == (None, None)
+        assert IdentityPipeline._split_full_name("   ") == (None, None)
