@@ -33,6 +33,8 @@ class PreprocessedDocument:
     used_specialized_crop: bool = False
     debug_image_path: str | None = None
     quality_flags: list[str] | None = None
+    # Set when preprocessing re-encodes bytes (OpenCV crops are always JPEG).
+    media_type: str | None = None
 
     def __post_init__(self) -> None:
         if self.quality_flags is None:
@@ -85,6 +87,7 @@ class DocumentPreprocessor:
                     used_specialized_crop=True,
                     debug_image_path=debug_image_path,
                     quality_flags=["heuristic_crop_used", "document_alignment_failed"],
+                    media_type="image/jpeg",
                 )
 
             debug_image_path = self._maybe_write_debug_image(aligned_document, "ine-front")
@@ -95,6 +98,7 @@ class DocumentPreprocessor:
                 image_bytes=aligned_document,
                 used_specialized_crop=True,
                 debug_image_path=debug_image_path,
+                media_type="image/jpeg",
             )
 
         if document_type == "ADDRESS_PROOF":
@@ -118,6 +122,7 @@ class DocumentPreprocessor:
                 image_bytes=focused_document,
                 used_specialized_crop=True,
                 debug_image_path=debug_image_path,
+                media_type="image/jpeg",
             )
 
         try:
@@ -146,6 +151,7 @@ class DocumentPreprocessor:
                 used_specialized_crop=True,
                 debug_image_path=debug_image_path,
                 quality_flags=["heuristic_crop_used"],
+                media_type="image/jpeg",
             )
 
         debug_image_path = self._maybe_write_debug_image(crop, "ine-reverso")
@@ -156,6 +162,7 @@ class DocumentPreprocessor:
             image_bytes=crop,
             used_specialized_crop=True,
             debug_image_path=debug_image_path,
+            media_type="image/jpeg",
         )
 
     def _extract_ine_reverso_identifier_crop(self, image_bytes: bytes) -> bytes | None:

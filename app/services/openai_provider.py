@@ -11,7 +11,7 @@ from app.services.document_classifier import (
     CLASSIFY_IDENTITY_DOCUMENT_PROMPT,
     parse_classification_payload,
 )
-from app.services.provider_common import normalize_media_type, parse_json_response
+from app.services.provider_common import parse_json_response, resolve_image_media_type
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ class OpenAIOCRService:
         media_type: str = "image/jpeg",
         document_type: str | None = None,
     ) -> OCRResult:
-        validated_media_type = normalize_media_type(media_type)
+        validated_media_type = resolve_image_media_type(image_bytes, media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
         prompt = (
             _INE_REVERSO_EXTRACT_PROMPT
@@ -199,7 +199,7 @@ class OpenAIOCRService:
         media_type: str = "image/jpeg",
     ) -> DocumentTypeClassification:
         """Alternate flow: infer document_type from image content only (ignore filenames)."""
-        validated_media_type = normalize_media_type(media_type)
+        validated_media_type = resolve_image_media_type(image_bytes, media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
         logger.debug(
             "Sending image to OpenAI for document type classification (size=%d bytes)",
@@ -276,7 +276,7 @@ class OpenAIVisionService:
         document_type: str,
         media_type: str = "image/jpeg",
     ) -> VisionResult:
-        validated_media_type = normalize_media_type(media_type)
+        validated_media_type = resolve_image_media_type(image_bytes, media_type)
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
         prompt_template = (
             _IDENTITY_VISION_PROMPT_TEMPLATE
