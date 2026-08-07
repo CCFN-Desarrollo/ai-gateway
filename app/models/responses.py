@@ -92,8 +92,6 @@ class ReceiptExtractedData(BaseModel):
 
 class IdentityExtractedData(BaseModel):
     full_name: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
     id_number: str | None = None
     curp: str | None = None
     expiry_date: str | None = None

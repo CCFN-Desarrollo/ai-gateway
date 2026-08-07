@@ -127,10 +127,10 @@ class IdentityPipeline(BasePipeline):
             preprocessed.debug_image_path,
         )
 
-        # Step 1 — OCR (crops are re-encoded as JPEG; use that MIME type)
+        # Step 1 — OCR
         ocr_result = await self.ocr_service.extract_text(
             preprocessed.image_bytes,
-            preprocessed.media_type or media_type,
+            media_type,
             document_type=document_type,
         )
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
@@ -202,17 +202,14 @@ class IdentityPipeline(BasePipeline):
         expiry_date_str = rules_engine.get_expiry_date_str(fields)
         is_expired = self._compute_is_expired(expiry_date_str)
 
-        full_name = (
-            None
-            if document_type == "INE_REVERSO"
-            else (fields.get("full_name") or fields.get("nombre_completo") or fields.get("nombre"))
-        )
-        first_name, last_name = self._split_full_name(full_name)
-
         extracted = IdentityExtractedData(
-            full_name=full_name,
-            first_name=first_name,
-            last_name=last_name,
+            full_name=(
+                None
+                if document_type == "INE_REVERSO"
+                else (
+                    fields.get("full_name") or fields.get("nombre_completo") or fields.get("nombre")
+                )
+            ),
             id_number=(
                 fields.get("id_number")
                 or fields.get("clave_elector")
@@ -261,24 +258,6 @@ class IdentityPipeline(BasePipeline):
                 exc,
             )
             return None
-
-    @staticmethod
-    def _split_full_name(full_name: str | None) -> tuple[str | None, str | None]:
-        """
-        Split a Mexican-style full name into given name(s) and surnames.
-
-        Convention: the last two tokens are paternal + maternal surnames;
-        everything before is the given name (may be compound).
-        With only two tokens, treat them as first + last name.
-        """
-        if not full_name or not str(full_name).strip():
-            return None, None
-        parts = str(full_name).split()
-        if len(parts) == 1:
-            return parts[0], None
-        if len(parts) == 2:
-            return parts[0], parts[1]
-        return " ".join(parts[:-2]), " ".join(parts[-2:])
 
     @staticmethod
     def _compute_is_expired(expiry_date_str: str | None) -> bool:

@@ -76,10 +76,10 @@ class ReceiptPipeline(BasePipeline):
             preprocessed.debug_image_path,
         )
 
-        # Step 1 — OCR (crops are re-encoded as JPEG; use that MIME type)
+        # Step 1 — OCR
         ocr_result = await self.ocr_service.extract_text(
             preprocessed.image_bytes,
-            preprocessed.media_type or media_type,
+            media_type,
             document_type=document_type,
         )
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)

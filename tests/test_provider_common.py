@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.errors import ProviderResponseError
-from app.services.provider_common import parse_json_response, resolve_image_media_type
+from app.services.provider_common import parse_json_response
 
 
 def test_parse_plain_json_object() -> None:
@@ -51,11 +51,3 @@ def test_parse_detects_provider_refusal() -> None:
     )
     with pytest.raises(ProviderResponseError, match="refused"):
         parse_json_response(refusal, "bad json")
-
-
-def test_resolve_image_media_type_prefers_bytes_over_declared() -> None:
-    jpeg = b"\xff\xd8\xff" + b"\x00" * 16
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
-    assert resolve_image_media_type(jpeg, "image/png") == "image/jpeg"
-    assert resolve_image_media_type(png, "image/jpeg") == "image/png"
-    assert resolve_image_media_type(b"not-an-image", "image/webp") == "image/webp"
