@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.v1.uploads import read_limited_upload, validate_image_file
+from app.api.v1.uploads import read_upload_as_image, validate_image_file
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
 from app.core.security import verify_api_key
@@ -23,14 +23,15 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     status_code=status.HTTP_200_OK,
     summary="Validate a receipt document",
     description=(
-        "Upload a receipt or address-proof image (JPEG, PNG, WebP) along with optional metadata. "
+        "Upload a receipt or address-proof image or PDF (JPEG, PNG, WebP, PDF) along with optional "
+        "metadata. PDFs are rasterized and only the first page is analyzed. "
         "The gateway runs OCR → Vision AI → Rules Engine → Scoring and returns "
         "a structured validation result with a routing decision."
     ),
     tags=["validation"],
 )
 async def validate_receipt(
-    file: UploadFile = File(..., description="Receipt image file (JPEG, PNG, WebP)"),  # noqa: B008
+    file: UploadFile = File(..., description="Receipt file (JPEG, PNG, WebP, or PDF — first page only)"),  # noqa: B008
     client_id: str = Form(..., description="Identifier of the submitting client"),  # noqa: B008
     source: DocumentSource = Form(  # noqa: B008
         DocumentSource.MANUAL, description="Origin channel of the document"
@@ -44,7 +45,7 @@ async def validate_receipt(
     """
     Validate a receipt document through the full AI pipeline.
 
-    - **file**: Multipart image file (JPEG / PNG / WebP, max configured MB)
+    - **file**: Multipart image file (JPEG / PNG / WebP / PDF — only the first PDF page is used, max configured MB)
     - **client_id**: Client identifier for traceability
     - **source**: Channel that submitted the document (whatsapp, crm, web, manual)
     - **document_type**: RECEIPT | ADDRESS_PROOF
@@ -52,7 +53,9 @@ async def validate_receipt(
     validate_image_file(file)
 
     try:
-        image_bytes = await read_limited_upload(file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB)
+        image_bytes, media_type = await read_upload_as_image(
+            file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB
+        )
     except Exception as exc:
         if isinstance(exc, HTTPException):
             raise
@@ -61,8 +64,6 @@ async def validate_receipt(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not read uploaded file.",
         ) from exc
-
-    media_type = file.content_type or "image/jpeg"
 
     try:
         result = await receipt_pipeline.process(

@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.v1.uploads import read_limited_upload, validate_image_file
+from app.api.v1.uploads import read_upload_as_image, validate_image_file
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
 from app.core.security import verify_api_key
@@ -23,14 +23,15 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     status_code=status.HTTP_200_OK,
     summary="Validate a Constancia de Situación Fiscal",
     description=(
-        "Upload one or more JPG/PNG images of a Constancia de Situación Fiscal (SAT). "
+        "Upload one or more JPG/PNG/WebP/PDF files of a Constancia de Situación Fiscal (SAT). "
+        "If a file is a PDF, only its first page is rasterized and used. "
         "The gateway runs OCR on all pages in parallel, merges the extracted fields, "
         "applies RFC/fiscal rules, and returns a structured validation result."
     ),
     tags=["validation"],
 )
 async def validate_csf(
-    files: list[UploadFile] = File(..., description="One or more CSF page images (JPEG, PNG, WebP)"),  # noqa: B008
+    files: list[UploadFile] = File(..., description="One or more CSF page files (JPEG, PNG, WebP, or PDF — first page only per file)"),  # noqa: B008
     client_id: str = Form(..., description="Identifier of the submitting client"),  # noqa: B008
     source: DocumentSource = Form(  # noqa: B008
         DocumentSource.MANUAL, description="Origin channel of the document"
@@ -49,7 +50,9 @@ async def validate_csf(
     pages: list[tuple[bytes, str]] = []
     for file in files:
         try:
-            image_bytes = await read_limited_upload(file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB)
+            image_bytes, media_type = await read_upload_as_image(
+                file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB
+            )
         except HTTPException:
             raise
         except Exception as exc:
@@ -58,7 +61,7 @@ async def validate_csf(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Could not read one of the uploaded files.",
             ) from exc
-        pages.append((image_bytes, file.content_type or "image/jpeg"))
+        pages.append((image_bytes, media_type))
 
     try:
         result = await csf_pipeline.process(

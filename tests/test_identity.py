@@ -214,9 +214,22 @@ class TestIdentityValidationAuth:
             "/api/v1/validate/identity",
             headers=api_headers,
             data={"client_id": "client-001", "document_type": "INE"},
-            files={"file": ("doc.pdf", io.BytesIO(dummy_png), "application/pdf")},
+            files={"file": ("doc.zip", io.BytesIO(dummy_png), "application/zip")},
         )
         assert resp.status_code == 415
+
+    def test_corrupt_pdf_returns_400(
+        self, client: TestClient, api_headers: dict, dummy_png: bytes
+    ):
+        """A file declared as application/pdf but without a real PDF signature is rejected
+        before it ever reaches the OCR/vision pipeline."""
+        resp = client.post(
+            "/api/v1/validate/identity",
+            headers=api_headers,
+            data={"client_id": "client-001", "document_type": "INE"},
+            files={"file": ("doc.pdf", io.BytesIO(dummy_png), "application/pdf")},
+        )
+        assert resp.status_code == 400
 
     def test_gif_content_type_returns_415(
         self, client: TestClient, api_headers: dict, dummy_png: bytes

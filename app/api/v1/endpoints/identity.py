@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.v1.uploads import read_limited_upload, validate_image_file
+from app.api.v1.uploads import read_upload_as_image, validate_image_file
 from app.core.config import settings
 from app.core.errors import ProviderResponseError, UpstreamServiceError
 from app.core.security import verify_api_key
@@ -31,7 +31,7 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     tags=["validation"],
 )
 async def validate_identity(
-    file: UploadFile = File(..., description="Identity document image (JPEG, PNG, WebP)"),  # noqa: B008
+    file: UploadFile = File(..., description="Identity document image (JPEG, PNG, WebP, or PDF — first page only)"),  # noqa: B008
     client_id: str = Form(..., description="Identifier of the submitting client"),  # noqa: B008
     document_type: DocumentType | None = Form(  # noqa: B008
         None,
@@ -45,14 +45,16 @@ async def validate_identity(
     """
     Validate an identity document through the full AI pipeline.
 
-    - **file**: Multipart image file (JPEG / PNG / WebP, max configured MB)
+    - **file**: Multipart image file (JPEG / PNG / WebP / PDF — only the first PDF page is used, max configured MB)
     - **client_id**: Client identifier for traceability
     - **document_type**: optional; omit to auto-detect from the image
     """
     validate_image_file(file)
 
     try:
-        image_bytes = await read_limited_upload(file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB)
+        image_bytes, media_type = await read_upload_as_image(
+            file, _MAX_FILE_BYTES, settings.MAX_FILE_SIZE_MB
+        )
     except Exception as exc:
         if isinstance(exc, HTTPException):
             raise
@@ -62,7 +64,6 @@ async def validate_identity(
             detail="Could not read uploaded file.",
         ) from exc
 
-    media_type = file.content_type or "image/jpeg"
     hinted_type = document_type.value if document_type is not None else None
 
     try:
