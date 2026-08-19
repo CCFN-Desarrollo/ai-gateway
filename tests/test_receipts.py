@@ -114,6 +114,17 @@ def _upload_file(dummy_png: bytes) -> dict:
     return {"file": ("receipt.png", io.BytesIO(dummy_png), "image/png")}
 
 
+def _make_pdf(num_pages: int) -> bytes:
+    import fitz
+
+    doc = fitz.open()
+    for _ in range(num_pages):
+        doc.new_page()
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return pdf_bytes
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -144,9 +155,22 @@ class TestReceiptValidationAuth:
             "/api/v1/validate/receipt",
             headers=api_headers,
             data={"client_id": "client-001"},
-            files={"file": ("doc.pdf", io.BytesIO(dummy_png), "application/pdf")},
+            files={"file": ("doc.zip", io.BytesIO(dummy_png), "application/zip")},
         )
         assert resp.status_code == 415
+
+    def test_corrupt_pdf_returns_400(
+        self, client: TestClient, api_headers: dict, dummy_png: bytes
+    ):
+        """A file declared as application/pdf but without a real PDF signature is rejected
+        before it ever reaches the OCR/vision pipeline."""
+        resp = client.post(
+            "/api/v1/validate/receipt",
+            headers=api_headers,
+            data={"client_id": "client-001"},
+            files={"file": ("doc.pdf", io.BytesIO(dummy_png), "application/pdf")},
+        )
+        assert resp.status_code == 400
 
     def test_gif_content_type_returns_415(
         self, client: TestClient, api_headers: dict, dummy_png: bytes
@@ -172,6 +196,50 @@ class TestReceiptValidationAuth:
 
 
 class TestReceiptValidationSuccess:
+    def test_pdf_upload_uses_only_first_page(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        ocr_receipt_result: OCRResult,
+        vision_authentic_result: VisionResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        """A 2-page PDF is accepted; only the rasterized first page reaches OCR."""
+        pdf_bytes = _make_pdf(2)
+        with (
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_receipt_result,
+            ) as ocr_mock,
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.rules_engine.validate_receipt",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/receipt",
+                headers=api_headers,
+                data={"client_id": "client-001"},
+                files={"file": ("comprobante.pdf", io.BytesIO(pdf_bytes), "application/pdf")},
+            )
+
+        assert resp.status_code == 200
+        ocr_mock.assert_awaited_once()
+        sent_bytes, sent_media_type = ocr_mock.await_args.args[0], ocr_mock.await_args.args[1]
+        assert sent_media_type == "image/png"
+        assert sent_bytes.startswith(b"\x89PNG")
+
     def test_auto_approved_response_shape(
         self,
         client: TestClient,
