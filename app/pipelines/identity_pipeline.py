@@ -207,7 +207,7 @@ class IdentityPipeline(BasePipeline):
             if document_type == "INE_REVERSO"
             else (fields.get("full_name") or fields.get("nombre_completo") or fields.get("nombre"))
         )
-        first_name, last_name = self._split_full_name(full_name)
+        first_name, last_name = self._split_full_name(full_name, document_type)
 
         extracted = IdentityExtractedData(
             full_name=full_name,
@@ -263,19 +263,26 @@ class IdentityPipeline(BasePipeline):
             return None
 
     @staticmethod
-    def _split_full_name(full_name: str | None) -> tuple[str | None, str | None]:
+    def _split_full_name(
+        full_name: str | None, document_type: str | None = None
+    ) -> tuple[str | None, str | None]:
         """
         Split a Mexican-style full name into given name(s) and surnames.
 
-        Convention: the last two tokens are paternal + maternal surnames;
-        everything before is the given name (may be compound).
-        With only two tokens, treat them as first + last name.
+        INE prints the NOMBRE field as "APELLIDO_PATERNO APELLIDO_MATERNO
+        NOMBRE(S)" (surnames first, given name last), the reverse of the
+        Western convention used elsewhere. With only two tokens, treat them
+        as last + first name for INE.
         """
         if not full_name or not str(full_name).strip():
             return None, None
         parts = str(full_name).split()
         if len(parts) == 1:
             return parts[0], None
+        if document_type == "INE":
+            if len(parts) == 2:
+                return parts[1], parts[0]
+            return parts[-1], " ".join(parts[:-1])
         if len(parts) == 2:
             return parts[0], parts[1]
         return " ".join(parts[:-2]), " ".join(parts[-2:])

@@ -30,13 +30,13 @@ def ocr_ine_result() -> OCRResult:
         raw_text=(
             "INSTITUTO NACIONAL ELECTORAL\n"
             "CREDENCIAL PARA VOTAR\n"
-            "NOMBRE: JUAN PEREZ GARCIA\n"
+            "NOMBRE: PEREZ GARCIA JUAN\n"
             "CURP: PEGJ900101HDFRZN01\n"
             "CLAVE ELECTOR: PRGAJN90010100H600\n"
             "VIGENCIA: 2030/12"
         ),
         structured_fields={
-            "full_name": "JUAN PEREZ GARCIA",
+            "full_name": "PEREZ GARCIA JUAN",
             "curp": "PEGJ900101HDFRZN01",
             "id_number": "PRGAJN90010100H600",
             "expiry_date": "2030-12-31",
@@ -49,9 +49,9 @@ def ocr_ine_result() -> OCRResult:
 @pytest.fixture()
 def ocr_expired_ine_result() -> OCRResult:
     return OCRResult(
-        raw_text="VIGENCIA: 2018/12\nNOMBRE: ANA LOPEZ RUIZ",
+        raw_text="VIGENCIA: 2018/12\nNOMBRE: LOPEZ RUIZ ANA",
         structured_fields={
-            "full_name": "ANA LOPEZ RUIZ",
+            "full_name": "LOPEZ RUIZ ANA",
             "id_number": "LPRANA800101MDFPZN01",
             "expiry_date": "2018-12-31",
         },
@@ -314,7 +314,7 @@ class TestIdentityValidationSuccess:
         assert body["requires_human_review"] is False
         assert body["document_type"] == "INE"
         assert body["is_expired"] is False
-        assert body["extracted_data"]["full_name"] == "JUAN PEREZ GARCIA"
+        assert body["extracted_data"]["full_name"] == "PEREZ GARCIA JUAN"
         assert body["extracted_data"]["first_name"] == "JUAN"
         assert body["extracted_data"]["last_name"] == "PEREZ GARCIA"
         assert body["extracted_data"]["curp"] == "PEGJ900101HDFRZN01"
@@ -765,3 +765,20 @@ class TestSplitFullName:
         assert IdentityPipeline._split_full_name(None) == (None, None)
         assert IdentityPipeline._split_full_name("") == (None, None)
         assert IdentityPipeline._split_full_name("   ") == (None, None)
+
+    def test_ine_three_tokens_surnames_first(self):
+        assert IdentityPipeline._split_full_name("PARRA DUARTE NARCISO", "INE") == (
+            "NARCISO",
+            "PARRA DUARTE",
+        )
+
+    def test_ine_two_tokens(self):
+        assert IdentityPipeline._split_full_name("PARRA NARCISO", "INE") == (
+            "NARCISO",
+            "PARRA",
+        )
+
+    def test_ine_four_tokens_compound_given_name(self):
+        assert IdentityPipeline._split_full_name(
+            "PARRA DUARTE NARCISO ANTONIO", "INE"
+        ) == ("ANTONIO", "PARRA DUARTE NARCISO")
