@@ -23,7 +23,7 @@ _MAX_ASPECT_RATIO_DELTA = 0.4
 # Relative crop calibrated for the lower-right identifier region on INE reverso.
 _INE_REVERSO_ID_CROP = (0.10, 0.60, 0.65, 0.22)
 _INE_REVERSO_FALLBACK_CROP = (0.10, 0.50, 0.80, 0.32)
-_INE_FRONT_FALLBACK_CROP = (0.08, 0.12, 0.84, 0.76)
+_INE_FRONT_FALLBACK_CROP = (0.06, 0.10, 0.88, 0.87)
 _ADDRESS_PROOF_MAIN_CROP = (0.02, 0.00, 0.44, 0.48)
 
 
