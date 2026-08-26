@@ -32,6 +32,18 @@ def test_expiry_date_str_normalizes_year_range_to_end_year():
     assert rules_engine.get_expiry_date_str({"expiry_date": "2026"}) == "2026"
 
 
+def test_parse_year_range_expiry_with_spaces_uses_end_year():
+    parsed = _parse_date("2023 - 2033")
+    assert parsed is not None
+    assert parsed.year == 2033
+    assert parsed.month == 12
+    assert parsed.day == 31
+
+
+def test_expiry_date_str_normalizes_spaced_year_range_to_end_year():
+    assert rules_engine.get_expiry_date_str({"vigencia": "2023 - 2033"}) == "2033"
+
+
 def test_unknown_expiry_is_flagged_without_failing_rule():
     result = rules_engine.validate_identity(
         OCRResult(

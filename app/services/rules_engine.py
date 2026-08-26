@@ -1,9 +1,12 @@
 import logging
+import re
 from datetime import datetime, timedelta
 
 from app.models.responses import OCRResult, RulesResult
 
 logger = logging.getLogger(__name__)
+
+_YEAR_RANGE_RE = re.compile(r"^(\d{4})\s*-\s*(\d{4})$")
 
 # ---------------------------------------------------------------------------
 # Field key aliases (English and Spanish) per field type
@@ -85,13 +88,12 @@ def _parse_date(value: str) -> datetime | None:
     """Attempt to parse a date string using multiple formats."""
     value = str(value).strip()
 
-    # Single year ("2026") or year range ("2026-2030") → Dec 31 of the last year.
+    # Single year ("2026") or year range ("2026-2030" / "2026 - 2030") → Dec 31 of the last year.
     if len(value) == 4 and value.isdigit():
         return datetime(int(value), 12, 31)
-    if len(value) == 9 and value[4] == "-":
-        start_str, end_str = value.split("-", maxsplit=1)
-        if start_str.isdigit() and end_str.isdigit():
-            return datetime(int(end_str), 12, 31)
+    range_match = _YEAR_RANGE_RE.match(value)
+    if range_match:
+        return datetime(int(range_match.group(2)), 12, 31)
 
     # Normalize common month/year expiry formats to the last day of that month.
     if len(value) == 7 and value[4] in {"-", "/"}:
@@ -313,10 +315,9 @@ class RulesEngine:
         for key in _EXPIRY_KEYS:
             if key in fields and fields[key]:
                 value = str(fields[key]).strip()
-                if len(value) == 9 and value[4] == "-":
-                    start_str, end_str = value.split("-", maxsplit=1)
-                    if start_str.isdigit() and end_str.isdigit():
-                        return end_str
+                range_match = _YEAR_RANGE_RE.match(value)
+                if range_match:
+                    return range_match.group(2)
                 return value
         return None
 

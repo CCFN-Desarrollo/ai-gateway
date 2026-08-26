@@ -60,6 +60,10 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
   "confidence": <float between 0.0 and 1.0>
 }
 
+The VIGENCIA field may show a year range (e.g. "2023 - 2033" or "2023-2033"),
+meaning the card is valid from the first year through the second year. In that
+case set expiry_date to the SECOND (later) year only, e.g. "2033".
+
 Only include fields that are clearly visible on the front side of the card."""
 
 _ADDRESS_PROOF_EXTRACT_PROMPT = """This is a Mexican proof-of-address document such as a utility bill.
