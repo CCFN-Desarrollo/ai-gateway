@@ -59,9 +59,13 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
   "confidence": <float between 0.0 and 1.0>
 }
 
-The VIGENCIA field may show a year range (e.g. "2023 - 2033" or "2023-2033"),
-meaning the card is valid from the first year through the second year. In that
-case set expiry_date to the SECOND (later) year only, e.g. "2033".
+The INE card has TWO separate year fields — do not confuse them:
+- "AÑO DE REGISTRO" (registration year, e.g. "2014 03"): IGNORE this, it is
+  NOT the expiry date.
+- "VIGENCIA" (validity period, e.g. "2023 - 2033" or "2023-2033"): THIS is
+  the expiry date. It shows a year range meaning the card is valid from the
+  first year through the second year. Set expiry_date to the SECOND (later)
+  year only, e.g. "2033". Only use the value next to the "VIGENCIA" label.
 
 Only include fields that are clearly visible on the front side of the card."""
 

@@ -780,5 +780,5 @@ class TestSplitFullName:
 
     def test_ine_four_tokens_compound_given_name(self):
         assert IdentityPipeline._split_full_name(
-            "PARRA DUARTE NARCISO ANTONIO", "INE"
-        ) == ("ANTONIO", "PARRA DUARTE NARCISO")
+            "GALLARDO VALENCIA CARMEN RUBY", "INE"
+        ) == ("CARMEN RUBY", "GALLARDO VALENCIA")

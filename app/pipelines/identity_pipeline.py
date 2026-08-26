@@ -270,9 +270,9 @@ class IdentityPipeline(BasePipeline):
         Split a Mexican-style full name into given name(s) and surnames.
 
         INE prints the NOMBRE field as "APELLIDO_PATERNO APELLIDO_MATERNO
-        NOMBRE(S)" (surnames first, given name last), the reverse of the
-        Western convention used elsewhere. With only two tokens, treat them
-        as last + first name for INE.
+        NOMBRE(S)" (surnames first, given name last, which may itself be
+        compound), the reverse of the Western convention used elsewhere.
+        With only two tokens, treat them as last + first name for INE.
         """
         if not full_name or not str(full_name).strip():
             return None, None
@@ -282,7 +282,7 @@ class IdentityPipeline(BasePipeline):
         if document_type == "INE":
             if len(parts) == 2:
                 return parts[1], parts[0]
-            return parts[-1], " ".join(parts[:-1])
+            return " ".join(parts[2:]), " ".join(parts[:2])
         if len(parts) == 2:
             return parts[0], parts[1]
         return " ".join(parts[:-2]), " ".join(parts[-2:])

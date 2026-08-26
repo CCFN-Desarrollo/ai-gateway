@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     )
 
     PROJECT_NAME: str = "AI Gateway"
-    VERSION: str = "1.0.0"
+    VERSION: str = "1.0.1"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
     CORS_ALLOWED_ORIGINS: str = "http://localhost,http://127.0.0.1"
