@@ -202,12 +202,7 @@ class IdentityPipeline(BasePipeline):
         expiry_date_str = rules_engine.get_expiry_date_str(fields)
         is_expired = self._compute_is_expired(expiry_date_str)
 
-        full_name = (
-            None
-            if document_type == "INE_REVERSO"
-            else (fields.get("full_name") or fields.get("nombre_completo") or fields.get("nombre"))
-        )
-        first_name, last_name = self._split_full_name(full_name, document_type)
+        full_name, first_name, last_name = self._build_name(fields, document_type)
 
         extracted = IdentityExtractedData(
             full_name=full_name,
@@ -261,6 +256,34 @@ class IdentityPipeline(BasePipeline):
                 exc,
             )
             return None
+
+    @classmethod
+    def _build_name(
+        cls, fields: dict, document_type: str
+    ) -> tuple[str | None, str | None, str | None]:
+        """
+        Build (full_name, first_name, last_name) from OCR structured fields.
+
+        Prefers the dedicated paternal_surname/maternal_surname/given_names
+        fields (extracted by fixed card position, order-independent) over
+        parsing a single concatenated full_name string, since the OCR model
+        is not always consistent about which order it puts full_name in.
+        """
+        if document_type == "INE_REVERSO":
+            return None, None, None
+
+        paternal = fields.get("paternal_surname")
+        maternal = fields.get("maternal_surname")
+        given = fields.get("given_names")
+        if paternal or maternal or given:
+            last_name = " ".join(p for p in (paternal, maternal) if p) or None
+            first_name = given or None
+            full_name = " ".join(p for p in (paternal, maternal, given) if p) or None
+            return full_name, first_name, last_name
+
+        full_name = fields.get("full_name") or fields.get("nombre_completo") or fields.get("nombre")
+        first_name, last_name = cls._split_full_name(full_name, document_type)
+        return full_name, first_name, last_name
 
     @staticmethod
     def _split_full_name(

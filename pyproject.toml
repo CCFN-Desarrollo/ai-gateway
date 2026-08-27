@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ai-gateway"
-version = "1.0.2"
+version = "1.0.3"
 description = "AI Orchestration Gateway for document validation via OCR and Vision AI"
 authors = []
 readme = "README.md"

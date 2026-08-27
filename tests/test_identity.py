@@ -782,3 +782,59 @@ class TestSplitFullName:
         assert IdentityPipeline._split_full_name(
             "GALLARDO VALENCIA CARMEN RUBY", "INE"
         ) == ("CARMEN RUBY", "GALLARDO VALENCIA")
+
+
+class TestBuildName:
+    def test_uses_dedicated_fields_when_present(self):
+        full_name, first_name, last_name = IdentityPipeline._build_name(
+            {
+                "paternal_surname": "PARRA",
+                "maternal_surname": "DUARTE",
+                "given_names": "NARCISO",
+            },
+            "INE",
+        )
+        assert full_name == "PARRA DUARTE NARCISO"
+        assert first_name == "NARCISO"
+        assert last_name == "PARRA DUARTE"
+
+    def test_dedicated_fields_are_order_independent_of_ocr_full_name(self):
+        # Regression: OCR sometimes returns full_name with the given name
+        # first (e.g. "NARCISO PARRA DUARTE") instead of surnames first.
+        # The dedicated per-line fields must not be affected by that.
+        full_name, first_name, last_name = IdentityPipeline._build_name(
+            {
+                "paternal_surname": "PARRA",
+                "maternal_surname": "DUARTE",
+                "given_names": "NARCISO",
+                "full_name": "NARCISO PARRA DUARTE",
+            },
+            "INE",
+        )
+        assert first_name == "NARCISO"
+        assert last_name == "PARRA DUARTE"
+
+    def test_compound_given_names_stay_together(self):
+        full_name, first_name, last_name = IdentityPipeline._build_name(
+            {
+                "paternal_surname": "GALLARDO",
+                "maternal_surname": "VALENCIA",
+                "given_names": "CARMEN RUBY",
+            },
+            "INE",
+        )
+        assert first_name == "CARMEN RUBY"
+        assert last_name == "GALLARDO VALENCIA"
+
+    def test_falls_back_to_full_name_when_dedicated_fields_missing(self):
+        full_name, first_name, last_name = IdentityPipeline._build_name(
+            {"full_name": "PARRA DUARTE NARCISO"}, "INE"
+        )
+        assert full_name == "PARRA DUARTE NARCISO"
+        assert first_name == "NARCISO"
+        assert last_name == "PARRA DUARTE"
+
+    def test_ine_reverso_has_no_name(self):
+        assert IdentityPipeline._build_name(
+            {"paternal_surname": "PARRA"}, "INE_REVERSO"
+        ) == (None, None, None)

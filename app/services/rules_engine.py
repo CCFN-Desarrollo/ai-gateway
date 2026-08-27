@@ -47,7 +47,16 @@ _ZIP_CODE_KEYS = {"zip_code", "codigo_postal", "cp", "postal_code"}
 _CITY_KEYS = {"city", "ciudad", "municipio", "town"}
 _STATE_KEYS = {"state", "estado", "province"}
 
-_NAME_KEYS = {"full_name", "nombre", "nombre_completo", "name", "apellidos", "nombre_apellidos"}
+_NAME_KEYS = {
+    "full_name",
+    "nombre",
+    "nombre_completo",
+    "name",
+    "apellidos",
+    "nombre_apellidos",
+    "given_names",
+    "paternal_surname",
+}
 _ID_KEYS = {
     "curp",
     "id_number",

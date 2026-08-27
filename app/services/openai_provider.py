@@ -51,7 +51,9 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 {
   "raw_text": "<relevant visible text from the front side>",
   "structured_fields": {
-    "full_name": "<full name if visible>",
+    "paternal_surname": "<first line under the NOMBRE label>",
+    "maternal_surname": "<second line under the NOMBRE label>",
+    "given_names": "<third line under the NOMBRE label>",
     "id_number": "<document identifier if visible>",
     "curp": "<CURP if visible>",
     "expiry_date": "<expiry date if visible>",
@@ -59,6 +61,13 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
   },
   "confidence": <float between 0.0 and 1.0>
 }
+
+The NOMBRE section always lists exactly three lines in this FIXED order,
+top to bottom: apellido paterno, apellido materno, nombre(s). Read each
+line by its position and put it in its own field above — do NOT reorder
+them based on what looks like a first name, and do NOT merge them into a
+single combined field. The given_names line may itself contain more than
+one word (a compound first name); keep it together in given_names.
 
 The INE card has TWO separate year fields — do not confuse them:
 - "AÑO DE REGISTRO" (registration year, e.g. "2014 03"): IGNORE this, it is
