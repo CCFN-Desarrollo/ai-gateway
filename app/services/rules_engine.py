@@ -2,7 +2,6 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from app.models.requests import is_address_proof
 from app.models.responses import OCRResult, RulesResult
 
 logger = logging.getLogger(__name__)
@@ -98,16 +97,6 @@ def _parse_date(value: str) -> datetime | None:
     """Attempt to parse a date string using multiple formats."""
     value = str(value).strip()
 
-    # Strip trailing time (e.g. "25-04-2026 8:41:22" / "2026-04-25T08:41:22").
-    if "T" in value and len(value) > 10:
-        value = value.split("T", maxsplit=1)[0].strip()
-    elif " " in value:
-        date_part, time_part = value.split(" ", maxsplit=1)
-        if any(sep in date_part for sep in ("-", "/")) and (
-            ":" in time_part or time_part.replace(":", "").isdigit()
-        ):
-            value = date_part.strip()
-
     # Single year ("2026") or year range ("2026-2030" / "2026 - 2030") → Dec 31 of the last year.
     if len(value) == 4 and value.isdigit():
         return datetime(int(value), 12, 31)
@@ -174,7 +163,7 @@ class RulesEngine:
         failed: list[str] = []
 
         flags: list[str] = []
-        if is_address_proof(document_type):
+        if document_type == "ADDRESS_PROOF":
             rules = [
                 ("has_issue_date", _has_field(fields, _DATE_KEYS)),
                 ("has_issuer", _has_field(fields, _ISSUER_KEYS)),
@@ -198,7 +187,7 @@ class RulesEngine:
             else:
                 failed.append(rule_name)
 
-        if is_address_proof(document_type):
+        if document_type == "ADDRESS_PROOF":
             issue_status = self.get_issue_date_freshness_status(fields)
             if issue_status == "valid":
                 passed.append("issue_date_within_3_months")
@@ -209,7 +198,7 @@ class RulesEngine:
                 flags.append("unknown_issue_date")
 
         rules_score = len(passed) / len(rules) if rules else 0.0
-        if is_address_proof(document_type):
+        if document_type == "ADDRESS_PROOF":
             denominator = len(passed) + len(failed)
             rules_score = len(passed) / denominator if denominator else 0.0
         logger.debug(

@@ -146,35 +146,6 @@ Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones) con esta 
 Si el documento muestra un periodo de facturación, usa la fecha de fin del periodo como issue_date.
 Solo incluye campos que sean claramente visibles."""
 
-_COMPROBANTE_DOMICILIO_EXTRACT_PROMPT = """Este es un comprobante de domicilio mexicano (agua, luz, teléfono, predial, estado de cuenta, etc.).
-Emisores frecuentes: CFE, Telmex, Izzi, y las Comisiones Estatales de Servicios Públicos (nombre completo o siglas CESPT, CESPE, CESPM, CESP*, etc. — son la misma familia de organismos de agua/servicios públicos por municipio/estado).
-Los formatos varían mucho (ticket térmico alto, factura A4, foto de celular torcida). Siempre busca las etiquetas del titular.
-
-El documento puede contener DOS direcciones:
-- CLIENTE / titular: la que nos interesa. Suele estar junto a NOMBRE / NOMBRE/RAZON SOCIAL, con etiquetas DOMICILIO, COLONIA, COLONIA Y/O FRACCIONAMIENTO, C.P., MUNICIPIO, ESTADO.
-- EMPRESA emisora: NO la queremos (encabezado/pie fiscal, Ave. Gastelum, etc.).
-
-Extrae ÚNICAMENTE la dirección del CLIENTE. Si solo ves street+colony sin CP/ciudad/estado, igual devuélvelos; no omitas un domicilio visible.
-
-Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones):
-{
-  "raw_text": "<texto relevante visible del documento>",
-  "structured_fields": {
-    "issuer": "<empresa emisora: CESPT, CESPE, CESPM, CFE, TELMEX, o el nombre 'Comisión Estatal de Servicios Públicos...' si solo aparece completo>",
-    "street": "<valor bajo DOMICILIO / calle y número del CLIENTE>",
-    "colony": "<valor bajo COLONIA o COLONIA Y/O FRACCIONAMIENTO>",
-    "zip_code": "<código postal del CLIENTE si aparece>",
-    "city": "<municipio o alcaldía del CLIENTE si aparece>",
-    "state": "<estado del CLIENTE si aparece>",
-    "issue_date": "<fecha en YYYY-MM-DD>"
-  },
-  "confidence": <float entre 0.0 y 1.0>
-}
-
-Para issuer, si ves el logo/sigla (CESPT, CESPE, CESPM, etc.) o el texto "Comisión Estatal de Servicios Públicos...", úsalo como emisor válido.
-Para issue_date, en este orden: FECHA EXPEDICION / FECHA DE EMISION / fecha de factura; si solo hay PERIODO DE CONSUMO, usa la fecha de FIN del periodo. Quita la hora si viene con timestamp.
-No inventes CP/ciudad/estado. Nunca dejes street/colony vacíos si DOMICILIO o COLONIA son legibles."""
-
 _CSF_EXTRACT_PROMPT = """Esta es una página de una Constancia de Situación Fiscal (CSF) emitida por el SAT (Servicio de Administración Tributaria de México).
 
 Extrae todos los datos fiscales visibles en esta página.
@@ -269,10 +240,8 @@ class AnthropicOCRService:
             if document_type == "INE_REVERSO"
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
-            else _COMPROBANTE_DOMICILIO_EXTRACT_PROMPT
-            if document_type == "COMPROBANTE_DOMICILIO"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
-            if document_type == "ADDRESS_PROOF"
+            if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO")
             else _CSF_EXTRACT_PROMPT
             if document_type == "CSF"
             else _EXTRACT_PROMPT

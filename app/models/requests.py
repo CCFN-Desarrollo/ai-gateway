@@ -23,16 +23,6 @@ class ReceiptDocumentType(str, Enum):
     COMPROBANTE_DOMICILIO = "COMPROBANTE_DOMICILIO"
 
 
-ADDRESS_PROOF_TYPES = {
-    ReceiptDocumentType.ADDRESS_PROOF.value,
-    ReceiptDocumentType.COMPROBANTE_DOMICILIO.value,
-}
-
-
-def is_address_proof(document_type: str | None) -> bool:
-    return document_type in ADDRESS_PROOF_TYPES
-
-
 class ReceiptValidationRequest(BaseModel):
     client_id: str
     source: DocumentSource = DocumentSource.MANUAL

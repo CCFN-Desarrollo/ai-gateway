@@ -25,11 +25,6 @@ _INE_REVERSO_ID_CROP = (0.10, 0.60, 0.65, 0.22)
 _INE_REVERSO_FALLBACK_CROP = (0.10, 0.50, 0.80, 0.32)
 _INE_FRONT_FALLBACK_CROP = (0.06, 0.10, 0.88, 0.87)
 _ADDRESS_PROOF_MAIN_CROP = (0.02, 0.00, 0.44, 0.48)
-# Tall thermal tickets (CESPT etc.): full width, top ~58% keeps DOMICILIO/COLONIA.
-_COMPROBANTE_HEADER_CROP = (0.00, 0.00, 1.00, 0.58)
-_COMPROBANTE_LANDSCAPE_CROP = (0.00, 0.00, 1.00, 0.50)
-_TALL_DOCUMENT_ASPECT_RATIO = 1.35
-_COMPROBANTE_UPSCALE_MIN_WIDTH = 900
 
 
 @dataclass(slots=True)
@@ -215,88 +210,6 @@ class DocumentPreprocessor:
         if not success:
             raise ValueError("Could not encode address proof focus image.")
         return encoded.tobytes()
-
-    def prepare_comprobante_for_ocr(self, image_bytes: bytes) -> PreprocessedDocument:
-        """Contrast-boost the full ticket so watermarked thermal text is more readable."""
-        if cv2 is None or np is None:  # pragma: no cover
-            return PreprocessedDocument(image_bytes=image_bytes)
-
-        try:
-            enhanced = self._enhance_for_ocr(_decode_image(image_bytes))
-            success, encoded = cv2.imencode(".jpg", enhanced, [cv2.IMWRITE_JPEG_QUALITY, 92])
-            if not success:
-                raise ValueError("Could not encode enhanced comprobante image.")
-            out = encoded.tobytes()
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Comprobante enhancement failed: %s", exc)
-            return PreprocessedDocument(
-                image_bytes=image_bytes,
-                quality_flags=["comprobante_enhancement_failed"],
-            )
-
-        debug_image_path = self._maybe_write_debug_image(out, "comprobante-enhanced")
-        return PreprocessedDocument(
-            image_bytes=out,
-            used_specialized_crop=False,
-            debug_image_path=debug_image_path,
-            quality_flags=["comprobante_enhanced"],
-            media_type="image/jpeg",
-        )
-
-    def crop_comprobante_header(self, image_bytes: bytes) -> PreprocessedDocument:
-        """Crop + enhance the header/customer block used when full-image OCR returns empty."""
-        if cv2 is None or np is None:  # pragma: no cover
-            return PreprocessedDocument(image_bytes=image_bytes)
-
-        try:
-            image = _decode_image(image_bytes)
-            height, width = image.shape[:2]
-            crop_box = (
-                _COMPROBANTE_HEADER_CROP
-                if height / max(width, 1) >= _TALL_DOCUMENT_ASPECT_RATIO
-                else _COMPROBANTE_LANDSCAPE_CROP
-            )
-            x, y, w, h = _relative_crop_box(width, height, crop_box)
-            crop = image[y : y + h, x : x + w]
-            crop = self._enhance_for_ocr(crop)
-            if crop.shape[1] < _COMPROBANTE_UPSCALE_MIN_WIDTH:
-                scale = _COMPROBANTE_UPSCALE_MIN_WIDTH / max(crop.shape[1], 1)
-                crop = cv2.resize(
-                    crop,
-                    (int(crop.shape[1] * scale), int(crop.shape[0] * scale)),
-                    interpolation=cv2.INTER_CUBIC,
-                )
-            success, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 92])
-            if not success:
-                raise ValueError("Could not encode comprobante header crop.")
-            out = encoded.tobytes()
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Comprobante header crop failed: %s", exc)
-            return PreprocessedDocument(
-                image_bytes=image_bytes,
-                quality_flags=["comprobante_header_crop_failed"],
-            )
-
-        debug_image_path = self._maybe_write_debug_image(out, "comprobante-header")
-        return PreprocessedDocument(
-            image_bytes=out,
-            used_specialized_crop=True,
-            debug_image_path=debug_image_path,
-            quality_flags=["comprobante_header_retry"],
-            media_type="image/jpeg",
-        )
-
-    @staticmethod
-    def _enhance_for_ocr(image: np.ndarray) -> np.ndarray:
-        """Raise local contrast so faint thermal text beats pink CESPT watermarks."""
-        if cv2 is None:  # pragma: no cover
-            return image
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        lightness, a_channel, b_channel = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-        boosted = clahe.apply(lightness)
-        merged = cv2.merge((boosted, a_channel, b_channel))
-        return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
     def _extract_heuristic_crop(self, image_bytes: bytes) -> bytes | None:
         image = _decode_image(image_bytes)
