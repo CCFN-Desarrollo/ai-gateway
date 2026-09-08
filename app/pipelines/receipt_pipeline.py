@@ -2,7 +2,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from app.models.responses import ReceiptExtractedData, ReceiptValidationResponse, VisionResult
+from app.models.requests import is_address_proof
+from app.models.responses import OCRResult, ReceiptExtractedData, ReceiptValidationResponse, VisionResult
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
 from app.services.document_preprocessor import document_preprocessor
@@ -12,6 +13,11 @@ from app.services.scoring_service import ScoringService, scoring_service
 from app.services.vision_service import receipt_vision_service
 
 logger = logging.getLogger(__name__)
+
+
+def _has_usable_ocr_fields(ocr_result: OCRResult) -> bool:
+    """True when OCR returned at least one non-empty structured field."""
+    return any(str(value).strip() for value in ocr_result.structured_fields.values() if value is not None)
 
 
 class ReceiptPipeline(BasePipeline):
@@ -64,10 +70,15 @@ class ReceiptPipeline(BasePipeline):
             document_type,
         )
 
-        preprocessed = document_preprocessor.preprocess_identity_document(
-            image_bytes=image_bytes,
-            document_type=document_type,
-        )
+        # ADDRESS_PROOF keeps its top-left focus crop.
+        # COMPROBANTE_DOMICILIO uses a contrast-boosted full image; crop only on empty OCR.
+        if document_type == "COMPROBANTE_DOMICILIO":
+            preprocessed = document_preprocessor.prepare_comprobante_for_ocr(image_bytes)
+        else:
+            preprocessed = document_preprocessor.preprocess_identity_document(
+                image_bytes=image_bytes,
+                document_type=document_type,
+            )
         logger.info(
             "Receipt preprocessing | request_id=%s used_specialized_crop=%s quality_flags=%s debug_image_path=%s",
             request_id,
@@ -82,10 +93,22 @@ class ReceiptPipeline(BasePipeline):
             preprocessed.media_type or media_type,
             document_type=document_type,
         )
+        if document_type == "COMPROBANTE_DOMICILIO" and not _has_usable_ocr_fields(ocr_result):
+            logger.warning(
+                "Comprobante OCR empty; retrying with header crop | request_id=%s confidence=%.2f",
+                request_id,
+                ocr_result.confidence,
+            )
+            header = document_preprocessor.crop_comprobante_header(image_bytes)
+            ocr_result = await self.ocr_service.extract_text(
+                header.image_bytes,
+                header.media_type or media_type,
+                document_type=document_type,
+            )
         logger.debug("OCR done | request_id=%s confidence=%.2f", request_id, ocr_result.confidence)
 
         # Step 2 — Vision AI
-        if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO"):
+        if is_address_proof(document_type):
             vision_result = self._build_neutral_vision_result()
             logger.info(
                 "Skipping vision stage for request_id=%s document_type=%s",
@@ -128,7 +151,7 @@ class ReceiptPipeline(BasePipeline):
             elapsed_ms,
         )
 
-        # Build extracted data from OCR structured fields
+        # Build extracted data from OCR structured fields (always, including AUTO_REJECTED).
         fields = ocr_result.structured_fields
         extracted = ReceiptExtractedData(
             date=fields.get("date") or fields.get("fecha"),
@@ -140,7 +163,13 @@ class ReceiptPipeline(BasePipeline):
                 or fields.get("numero")
                 or fields.get("ticket")
             ),
-            street=fields.get("street") or fields.get("calle") or fields.get("domicilio"),
+            street=(
+                fields.get("street")
+                or fields.get("calle")
+                or fields.get("domicilio")
+                or fields.get("address")
+                or fields.get("direccion")
+            ),
             colony=fields.get("colony") or fields.get("colonia"),
             zip_code=fields.get("zip_code") or fields.get("codigo_postal") or fields.get("cp"),
             city=fields.get("city") or fields.get("ciudad") or fields.get("municipio"),
@@ -149,7 +178,7 @@ class ReceiptPipeline(BasePipeline):
         )
         issue_date_str = rules_engine.get_issue_date_str(fields)
         is_expired = (
-            self._compute_is_expired(issue_date_str) if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO") else False
+            self._compute_is_expired(issue_date_str) if is_address_proof(document_type) else False
         )
 
         return ReceiptValidationResponse(

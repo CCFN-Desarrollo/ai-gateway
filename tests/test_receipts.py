@@ -398,6 +398,151 @@ class TestReceiptValidationSuccess:
         assert body["extracted_data"]["issue_date"] is not None
         assert body["is_expired"] is False
 
+    def test_comprobante_domicilio_returns_address_when_auto_rejected(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_address_proof_result: OCRResult,
+        vision_authentic_result: VisionResult,
+    ):
+        old_issue_date = (datetime.now() - timedelta(days=140)).strftime("%Y-%m-%d")
+        ocr_result = OCRResult(
+            raw_text="CESPT DOMICILIO AVE EMILIANO ZAPATA 5",
+            structured_fields={
+                "issuer": "CESPT",
+                "street": "AVE EMILIANO ZAPATA 5",
+                "colony": "EJIDO FRANCISCO VILLA",
+                "issue_date": old_issue_date,
+            },
+            confidence=0.93,
+        )
+        rules_result = RulesResult(
+            passed_rules=["has_issuer", "has_street", "has_colony", "has_issue_date"],
+            failed_rules=[
+                "has_zip_code",
+                "has_city",
+                "has_state",
+                "issue_date_within_3_months",
+            ],
+            flags=["expired_document"],
+            rules_score=0.5,
+        )
+        scoring_rejected = ScoringResult(
+            final_score=40.0,
+            decision=Decision.AUTO_REJECTED,
+            breakdown={},
+            requires_human_review=False,
+        )
+        with (
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.rules_engine.validate_receipt",
+                return_value=rules_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.scoring_service.calculate_score",
+                return_value=scoring_rejected,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/receipt",
+                headers=api_headers,
+                data={
+                    "client_id": "client-003",
+                    "source": "manual",
+                    "document_type": "COMPROBANTE_DOMICILIO",
+                },
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["document_type"] == "COMPROBANTE_DOMICILIO"
+        assert body["decision"] == "AUTO_REJECTED"
+        assert body["extracted_data"]["street"] == "AVE EMILIANO ZAPATA 5"
+        assert body["extracted_data"]["colony"] == "EJIDO FRANCISCO VILLA"
+        assert body["extracted_data"]["issuer"] == "CESPT"
+        assert body["extracted_data"]["issue_date"] == old_issue_date
+        assert body["is_expired"] is True
+
+    def test_comprobante_retries_ocr_when_first_pass_empty(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        vision_authentic_result: VisionResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        empty_ocr = OCRResult(raw_text="", structured_fields={}, confidence=0.03)
+        recent = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        filled_ocr = OCRResult(
+            raw_text="CESPT DOMICILIO AVE EMILIANO ZAPATA 5",
+            structured_fields={
+                "issuer": "CESPT",
+                "street": "AVE EMILIANO ZAPATA 5",
+                "colony": "EJIDO FRANCISCO VILLA",
+                "issue_date": recent,
+            },
+            confidence=0.91,
+        )
+        rules_result = RulesResult(
+            passed_rules=[
+                "has_issue_date",
+                "has_issuer",
+                "has_street",
+                "has_colony",
+                "issue_date_within_3_months",
+            ],
+            failed_rules=["has_zip_code", "has_city", "has_state"],
+            rules_score=0.625,
+        )
+        ocr_mock = AsyncMock(side_effect=[empty_ocr, filled_ocr])
+        with (
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.ocr_service.extract_text",
+                ocr_mock,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.vision_service.analyze_document",
+                new_callable=AsyncMock,
+                return_value=vision_authentic_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.rules_engine.validate_receipt",
+                return_value=rules_result,
+            ),
+            patch(
+                "app.pipelines.receipt_pipeline.receipt_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/receipt",
+                headers=api_headers,
+                data={
+                    "client_id": "client-004",
+                    "source": "manual",
+                    "document_type": "COMPROBANTE_DOMICILIO",
+                },
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        assert ocr_mock.await_count == 2
+        body = resp.json()
+        assert body["extracted_data"]["street"] == "AVE EMILIANO ZAPATA 5"
+        assert body["extracted_data"]["colony"] == "EJIDO FRANCISCO VILLA"
+
     def test_jpeg_is_accepted(
         self,
         client: TestClient,

@@ -99,6 +99,35 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this exact st
 If the document shows a billing period, use the end date of that period as issue_date.
 Only include fields that are clearly visible."""
 
+_COMPROBANTE_DOMICILIO_EXTRACT_PROMPT = """This is a Mexican proof-of-address bill (water, electricity, phone, property tax, bank statement, etc.).
+Common issuers: CFE, Telmex, Izzi, and Comisiones Estatales de Servicios Públicos (full name or acronyms CESPT, CESPE, CESPM, CESP*, etc. — same family of municipal/state water utilities).
+Layouts vary (tall thermal tickets, A4 invoices, tilted phone photos). Always find the account-holder labels.
+
+The document may contain TWO addresses:
+- CUSTOMER / account holder: the one we need. Usually next to NOMBRE / NOMBRE/RAZON SOCIAL, under DOMICILIO, COLONIA, COLONIA Y/O FRACCIONAMIENTO, C.P., MUNICIPIO, ESTADO.
+- ISSUER company address: IGNORE (header/footer fiscal address).
+
+Extract ONLY the customer address. If only street+colony are printed (no ZIP/city/state), still return them — never leave a visible DOMICILIO blank.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "raw_text": "<relevant visible text from the document>",
+  "structured_fields": {
+    "issuer": "<issuer: CESPT, CESPE, CESPM, CFE, TELMEX, or the full 'Comisión Estatal de Servicios Públicos...' name if only that appears>",
+    "street": "<value under DOMICILIO / customer street and number>",
+    "colony": "<value under COLONIA or COLONIA Y/O FRACCIONAMIENTO>",
+    "zip_code": "<customer postal code if present>",
+    "city": "<customer city/municipality if present>",
+    "state": "<customer state if present>",
+    "issue_date": "<date as YYYY-MM-DD>"
+  },
+  "confidence": <float between 0.0 and 1.0>
+}
+
+For issuer, treat logo/acronym (CESPT, CESPE, CESPM, etc.) or the text "Comisión Estatal de Servicios Públicos..." as a valid issuer.
+For issue_date prefer FECHA EXPEDICION / FECHA DE EMISION / invoice date; if only PERIODO DE CONSUMO exists, use the period END date. Drop any time component.
+Do not invent ZIP/city/state. Never omit street/colony when DOMICILIO or COLONIA are readable."""
+
 _CSF_EXTRACT_PROMPT = """Esta es una página de una Constancia de Situación Fiscal (CSF) emitida por el SAT (Servicio de Administración Tributaria de México).
 
 Extrae todos los datos fiscales visibles en esta página.
@@ -190,8 +219,10 @@ class OpenAIOCRService:
             if document_type == "INE_REVERSO"
             else _INE_FRONT_EXTRACT_PROMPT
             if document_type == "INE"
+            else _COMPROBANTE_DOMICILIO_EXTRACT_PROMPT
+            if document_type == "COMPROBANTE_DOMICILIO"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
-            if document_type in ("ADDRESS_PROOF", "COMPROBANTE_DOMICILIO")
+            if document_type == "ADDRESS_PROOF"
             else _CSF_EXTRACT_PROMPT
             if document_type == "CSF"
             else _EXTRACT_PROMPT

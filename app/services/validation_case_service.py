@@ -15,6 +15,7 @@ from app.core.errors import (
 )
 from app.models.requests import (
     AuthorizationStatus,
+    ADDRESS_PROOF_TYPES,
     ValidationCaseCreateRequest,
     ValidationCaseStatus,
     ValidationDocumentStatus,
@@ -231,7 +232,7 @@ class ValidationCaseService:
                 consolidated["date_of_birth"] = consolidated["date_of_birth"] or extracted.get(
                     "date_of_birth"
                 )
-            elif document["document_type"] == "ADDRESS_PROOF":
+            elif document["document_type"] in ADDRESS_PROOF_TYPES:
                 consolidated["street"] = consolidated["street"] or extracted.get("street")
                 consolidated["colony"] = consolidated["colony"] or extracted.get("colony")
                 consolidated["zip_code"] = consolidated["zip_code"] or extracted.get("zip_code")
