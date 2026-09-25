@@ -14,8 +14,8 @@ from app.core.errors import (
     UpstreamServiceError,
 )
 from app.models.requests import (
-    AuthorizationStatus,
     ADDRESS_PROOF_TYPES,
+    AuthorizationStatus,
     ValidationCaseCreateRequest,
     ValidationCaseStatus,
     ValidationDocumentStatus,

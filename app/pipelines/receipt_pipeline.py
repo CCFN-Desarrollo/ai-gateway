@@ -3,7 +3,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.models.requests import is_address_proof
-from app.models.responses import OCRResult, ReceiptExtractedData, ReceiptValidationResponse, VisionResult
+from app.models.responses import (
+    OCRResult,
+    ReceiptExtractedData,
+    ReceiptValidationResponse,
+    VisionResult,
+)
 from app.pipelines.base_pipeline import BasePipeline
 from app.services.ai_interfaces import OCRProvider, VisionProvider
 from app.services.document_preprocessor import document_preprocessor
