@@ -208,6 +208,62 @@ class TestIdentityValidationAuth:
         )
         assert resp.status_code == 422
 
+    def test_otro_document_type_is_treated_as_ine(
+        self,
+        client: TestClient,
+        api_headers: dict,
+        dummy_png: bytes,
+        ocr_ine_result: OCRResult,
+        rules_pass_result: RulesResult,
+        scoring_approved_result: ScoringResult,
+    ):
+        """Temporary: OTRO is accepted and rewritten to INE before the existing pipeline."""
+        with (
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.classify_document",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.document_preprocessor.preprocess_identity_document",
+                return_value=type(
+                    "PreprocessedStub",
+                    (),
+                    {
+                        "image_bytes": dummy_png,
+                        "quality_flags": [],
+                        "used_specialized_crop": False,
+                        "debug_image_path": None,
+                        "media_type": None,
+                    },
+                )(),
+            ) as preprocess_mock,
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.ocr_service.extract_text",
+                new_callable=AsyncMock,
+                return_value=ocr_ine_result,
+            ) as ocr_mock,
+            patch(
+                "app.pipelines.identity_pipeline.rules_engine.validate_identity",
+                return_value=rules_pass_result,
+            ),
+            patch(
+                "app.pipelines.identity_pipeline.identity_pipeline.scoring_service.calculate_score",
+                return_value=scoring_approved_result,
+            ),
+        ):
+            resp = client.post(
+                "/api/v1/validate/identity",
+                headers=api_headers,
+                data={"client_id": "client-001", "document_type": "OTRO"},
+                files=_upload_file(dummy_png),
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["document_type"] == "INE"
+        assert preprocess_mock.call_args.kwargs["document_type"] == "INE"
+        assert ocr_mock.await_args.kwargs.get("document_type") == "INE"
+
     def test_unsupported_file_type_returns_415(
         self, client: TestClient, api_headers: dict, dummy_png: bytes
     ):
