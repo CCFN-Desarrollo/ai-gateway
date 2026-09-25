@@ -207,7 +207,7 @@ curl -X POST http://localhost:8000/api/v1/validate/identity \
 
 Valores válidos:
 
-- `document_type` en identidad: `INE`, `INE_REVERSO`, `PASAPORTE`, `LICENCIA`
+- `document_type` en identidad: `INE`, `INE_REVERSO`, `PASAPORTE`, `LICENCIA`. `OTRO` se acepta y se procesa como `INE`
 - `document_type` en receipt: `RECEIPT`, `ADDRESS_PROOF`
 - `source`: `whatsapp`, `crm`, `web`, `manual`
 - tipos de archivo aceptados: `image/jpeg`, `image/png`, `image/webp`

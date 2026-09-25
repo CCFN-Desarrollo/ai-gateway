@@ -15,6 +15,10 @@ class DocumentType(str, Enum):
     INE_REVERSO = "INE_REVERSO"
     PASAPORTE = "PASAPORTE"
     LICENCIA = "LICENCIA"
+    # Temporary request alias only. Not a pipeline document type.
+    # Accepted so callers that send OTRO do not 422; identity maps it to INE.
+    # Replace this when OTRO gets its own handling.
+    OTRO = "OTRO"
 
 
 class ReceiptDocumentType(str, Enum):
