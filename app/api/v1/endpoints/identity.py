@@ -25,7 +25,6 @@ _MAX_FILE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     description=(
         "Upload an identity document image (INE, INE_REVERSO, PASAPORTE, LICENCIA). "
         "When document_type is provided, the existing typed pipeline runs unchanged. "
-        "OTRO is accepted and treated as INE. "
         "When omitted, an alternate flow classifies the type from image content only "
         "(filenames are ignored), then continues with the same pipeline."
     ),
@@ -38,7 +37,6 @@ async def validate_identity(
         None,
         description=(
             "Optional. When set: INE | INE_REVERSO | PASAPORTE | LICENCIA (existing flow). "
-            "OTRO is accepted and treated as INE. "
             "When omitted: classify from image content (alternate flow; ignore filename)."
         ),
     ),
@@ -49,7 +47,7 @@ async def validate_identity(
 
     - **file**: Multipart image file (JPEG / PNG / WebP / PDF — only the first PDF page is used, max configured MB)
     - **client_id**: Client identifier for traceability
-    - **document_type**: optional; omit to auto-detect from the image. OTRO is treated as INE.
+    - **document_type**: optional; omit to auto-detect from the image
     """
     validate_image_file(file)
 
@@ -67,16 +65,6 @@ async def validate_identity(
         ) from exc
 
     hinted_type = document_type.value if document_type is not None else None
-    # TEMPORARY: some callers send document_type=OTRO. Accept it here and rewrite
-    # to INE before the existing pipeline so classification, crop, OCR, and scoring
-    # stay on the current INE path. Do not thread OTRO into the pipeline.
-    # This mapping must be replaced when OTRO has its own document handling.
-    if hinted_type == DocumentType.OTRO.value:
-        logger.info(
-            "document_type OTRO received for client_id=%s; treating as INE",
-            client_id,
-        )
-        hinted_type = DocumentType.INE.value
 
     try:
         if hinted_type is None:
