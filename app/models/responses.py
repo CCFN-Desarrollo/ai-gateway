@@ -154,6 +154,42 @@ class CsfValidationResponse(BaseValidationResponse):
     breakdown: dict = Field(default_factory=dict)
 
 
+class CsfRegimen(BaseModel):
+    regimen: str | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
+
+
+class CsfActividadEconomica(BaseModel):
+    actividad: str | None = None
+    porcentaje: float | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
+
+
+class CsfPage2Data(BaseModel):
+    regimenes: list[CsfRegimen] = Field(default_factory=list)
+    actividades_economicas: list[CsfActividadEconomica] = Field(default_factory=list)
+
+
+class CsfV2ValidationResponse(BaseModel):
+    """CSF v2 result. page1 and page2 are independent and either may be null."""
+
+    model_config = ConfigDict(use_enum_values=True)
+
+    request_id: UUID
+    timestamp: datetime
+    processing_time_ms: float
+    document_type: str = "CSF"
+    pages_processed: int = 0
+    page1: CsfExtractedData | None = None
+    page2: CsfPage2Data | None = None
+    final_score: float | None = None
+    decision: Decision | None = None
+    requires_human_review: bool | None = None
+    breakdown: dict = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Health response
 # ---------------------------------------------------------------------------

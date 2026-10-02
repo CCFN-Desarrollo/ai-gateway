@@ -153,6 +153,35 @@ Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones) con esta 
 
 Notas: fiscal_regimes y fiscal_obligations son listas ([] si no hay). Solo incluye campos claramente visibles."""
 
+_CSF_PAGE2_EXTRACT_PROMPT = """Esta página es la continuación de una Constancia de Situación Fiscal (CSF) del SAT (México). Suele contener las tablas "Regímenes" y "Actividades Económicas".
+
+Extrae solo lo que esté visible en esta página. No inventes filas.
+
+Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin explicaciones) con esta estructura exacta:
+{
+  "raw_text": "<texto relevante visible en la página>",
+  "structured_fields": {
+    "regimenes": [
+      {
+        "regimen": "<texto de la columna Régimen>",
+        "fecha_inicio": "<Fecha Inicio en formato YYYY-MM-DD, o null>",
+        "fecha_fin": "<Fecha Fin en formato YYYY-MM-DD, o null si está vacía>"
+      }
+    ],
+    "actividades_economicas": [
+      {
+        "actividad": "<descripción de la actividad económica>",
+        "porcentaje": <número entre 0 y 100, o null si no aparece>,
+        "fecha_inicio": "<YYYY-MM-DD o null>",
+        "fecha_fin": "<YYYY-MM-DD o null si está vacía>"
+      }
+    ]
+  },
+  "confidence": <float entre 0.0 y 1.0>
+}
+
+Si una tabla no está en la página, devuelve []. No incluyas datos de identificación (RFC, nombre, domicilio) en esta respuesta."""
+
 _IDENTITY_VISION_PROMPT_TEMPLATE = """Analyze this {document_type} identity document image for operational validation, not forensic authenticity.
 
 Assess:
@@ -201,6 +230,8 @@ class OllamaOCRService:
             if document_type == "COMPROBANTE_DOMICILIO"
             else _ADDRESS_PROOF_EXTRACT_PROMPT
             if document_type == "ADDRESS_PROOF"
+            else _CSF_PAGE2_EXTRACT_PROMPT
+            if document_type == "CSF_PAGE2"
             else _CSF_EXTRACT_PROMPT
             if document_type == "CSF"
             else _EXTRACT_PROMPT
